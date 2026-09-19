@@ -14,3 +14,9 @@ results/
 
 # Fetched evaluation data (fetch_datasets.py); never committed
 /local-data/
+
+# Local dev artefacts
+local-data-dev/
+metaeval/
+models/
+nohup.out

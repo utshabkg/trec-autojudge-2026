@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "auto-judge-starterkit"
+name = "iris-autojudge"
 version = "1.0.0"
-description = "Example AutoJudge implementations for building custom judges"
+description = "Corroborate: a pooled-corroboration AutoJudge with leave-one-team-out weighting (TREC 2026 AutoJudge, team iris)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "TREC AutoJudge Team"}
+    {name = "team iris"}
 ]
-keywords = ["trec", "autojudge", "rag", "evaluation", "ir"]
+keywords = ["trec", "autojudge", "rag", "evaluation", "ir", "nuggets", "pooling"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -29,6 +29,9 @@ classifiers = [
 dependencies = [
     "autojudge-base>=1.0.0",
     "tira>=0.0.100",
+    "sentence-transformers>=3.0",
+    "numpy>=1.24",
+    "scipy>=1.11",
 ]
 
 [project.optional-dependencies]
@@ -43,13 +46,13 @@ evaluate = [
     "autojudge-evaluate>=1.0.0",
 ]
 all = [
-    "auto-judge-starterkit[minima-llm,evaluate,test]",
+    "iris-autojudge[minima-llm,evaluate,test]",
     "tqdm>=4.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/trec-auto-judge/auto-judge-starter-kit"
-Repository = "https://github.com/trec-auto-judge/auto-judge-starter-kit"
+Homepage = "https://github.com/utshabkg/iris-autojudge"
+Repository = "https://github.com/utshabkg/iris-autojudge"
 
 [tool.setuptools.packages.find]
 where = ["."]
