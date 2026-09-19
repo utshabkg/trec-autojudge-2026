@@ -1,0 +1,225 @@
+"""Per-topic answer pooling: cluster the pool, count team votes, apply LOTO.
+
+The pooling assumption from retrieval evaluation, moved from documents to
+answers: for a given topic we hold every system's answer, and a fact that many
+independent teams state is probably a real and important fact about that topic.
+
+Two corrections make that usable rather than circular.
+
+Votes are counted per team, not per run. rag26 is 83 runs from 25 teams, so
+about three runs per team, and teams submit close variants of one pipeline.
+Counting runs would measure herd size and let one team vote several times for
+its own phrasing.
+
+Leave-one-team-out removes bank capture. A report's own sentences are in the
+bank it is scored against, so without a correction every report automatically
+covers whatever only it said. Cluster weights are recomputed per scored team as
+|teams(c) - {t}|, which is the leave-one-group-out pool-bias correction from
+retrieval evaluation.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from dataclasses import dataclass
+from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+from .textutil import normalize, scoreable_sentences, topic_text
+
+log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Cluster:
+    """One pooled claim.
+
+    `leader` is the first sentence assigned to the cluster in
+    (run_id, sentence_index) order. Using the first member rather than a
+    recomputed medoid keeps clustering deterministic and single-pass. Which run
+    supplies it is arbitrary but stable, and it cannot advantage that run
+    because every member is within `tau` of it anyway and LOTO removes
+    self-credit regardless.
+    """
+
+    cluster_id: str
+    leader: str
+    teams: FrozenSet[str]
+    runs: FrozenSet[str]
+    specificity: float
+    size: int
+
+    def loto_weight(self, team_id: Optional[str]) -> int:
+        """Team votes excluding the team being scored."""
+        if team_id is None:
+            return len(self.teams)
+        return len(self.teams - {team_id})
+
+    def other_teams(self, team_id: Optional[str]) -> int:
+        return self.loto_weight(team_id)
+
+
+@dataclass
+class TopicPool:
+    """Everything the scorer needs for one topic."""
+
+    topic_id: str
+    clusters: List[Cluster]
+    # (run_id, sentence_index) -> cluster_id, for NPREC and for exact coverage
+    assignment: Dict[Tuple[str, int], str]
+    # cluster_id -> row index into `leader_vecs`
+    index_of: Dict[str, int]
+    leader_vecs: np.ndarray
+    n_teams: int
+
+    def bank(
+        self, *, specificity_floor: float, min_teams: int, max_clusters: int
+    ) -> List[Cluster]:
+        """The scoring bank: specific enough, corroborated enough, capped.
+
+        `min_teams >= 2` is what guarantees no bank cluster can be the private
+        invention of a single team, so a LOTO weight can never fall to zero and
+        the recall denominator stays well defined for every report.
+
+        Selection happens once, globally, and LOTO then reweights within that
+        fixed bank. Re-selecting per team would make the denominator depend on
+        who is being scored, which is harder to interpret and no fairer.
+        """
+        elig = [
+            c
+            for c in self.clusters
+            if c.specificity >= specificity_floor and len(c.teams) >= min_teams
+        ]
+        # Sort by votes, then id, so the cap is deterministic under ties.
+        elig.sort(key=lambda c: (-len(c.teams), c.cluster_id))
+        if max_clusters and max_clusters > 0:
+            elig = elig[:max_clusters]
+        return elig
+
+
+def _cluster_id(text: str) -> str:
+    return hashlib.md5(normalize(text).encode("utf-8")).hexdigest()
+
+
+def build_topic_pool(
+    reports: Sequence,
+    topic,
+    encoders,
+    *,
+    tau: float = 0.82,
+    min_sentence_words: int = 5,
+    vote_unit: str = "team",
+) -> TopicPool:
+    """Cluster every scoreable sentence of every report for one topic.
+
+    `reports` must already be filtered to this topic. Processing order is fixed
+    to (run_id, sentence_index) so the pool is reproducible.
+
+    `vote_unit="run"` is the ablation that counts runs instead of teams. It is
+    implemented by treating each run as its own team, so the rest of the
+    pipeline is untouched.
+    """
+    ordered = sorted(reports, key=lambda r: str(r.metadata.run_id))
+
+    items: List[Tuple[str, str, int, str]] = []  # run_id, team_id, sent_idx, text
+    for rep in ordered:
+        run_id = str(rep.metadata.run_id)
+        team_id = str(rep.metadata.team_id or run_id)
+        if vote_unit == "run":
+            team_id = run_id
+        sents = rep.get_sentences() or []
+        for idx, text in scoreable_sentences(sents, min_sentence_words):
+            items.append((run_id, team_id, idx, text))
+
+    topic_str = topic_text(
+        getattr(topic, "title", None),
+        getattr(topic, "background", None),
+        getattr(topic, "problem_statement", None),
+    )
+
+    if not items:
+        log.warning("topic %s: no scoreable sentences in the pool", topic.request_id)
+        return TopicPool(
+            topic_id=str(topic.request_id),
+            clusters=[],
+            assignment={},
+            index_of={},
+            leader_vecs=np.zeros((0, 0), dtype=np.float32),
+            n_teams=0,
+        )
+
+    vecs = encoders.embed([t for _, _, _, t in items])
+    topic_vec = encoders.embed([topic_str])[0] if topic_str else None
+
+    dim = vecs.shape[1]
+    leaders = np.zeros((len(items), dim), dtype=np.float32)
+    n_leaders = 0
+    leader_text: List[str] = []
+    teams: List[set] = []
+    runs: List[set] = []
+    sizes: List[int] = []
+    assignment: Dict[Tuple[str, int], str] = {}
+    cluster_ids: List[str] = []
+
+    for (run_id, team_id, idx, text), v in zip(items, vecs):
+        best = -1
+        if n_leaders:
+            sims = leaders[:n_leaders] @ v
+            j = int(np.argmax(sims))
+            if float(sims[j]) >= tau:
+                best = j
+        if best < 0:
+            leaders[n_leaders] = v
+            leader_text.append(text)
+            cid = _cluster_id(text)
+            # Distinct sentences can normalise to the same id only if identical,
+            # which dedupe already prevents within a report but not across them.
+            while cid in cluster_ids:
+                cid = hashlib.md5((cid + "+").encode("utf-8")).hexdigest()
+            cluster_ids.append(cid)
+            teams.append({team_id})
+            runs.append({run_id})
+            sizes.append(1)
+            best = n_leaders
+            n_leaders += 1
+        else:
+            teams[best].add(team_id)
+            runs[best].add(run_id)
+            sizes[best] += 1
+        assignment[(run_id, idx)] = cluster_ids[best]
+
+    leader_vecs = leaders[:n_leaders].copy()
+    if topic_vec is not None and n_leaders:
+        spec = leader_vecs @ topic_vec
+    else:
+        spec = np.ones((n_leaders,), dtype=np.float32)
+
+    clusters = [
+        Cluster(
+            cluster_id=cluster_ids[i],
+            leader=leader_text[i],
+            teams=frozenset(teams[i]),
+            runs=frozenset(runs[i]),
+            specificity=float(spec[i]),
+            size=sizes[i],
+        )
+        for i in range(n_leaders)
+    ]
+    index_of = {cluster_ids[i]: i for i in range(n_leaders)}
+    all_teams = {t for s in teams for t in s}
+
+    log.info(
+        "topic %s: %d sentences -> %d clusters, %d teams, %d clusters with >=2 teams",
+        topic.request_id, len(items), n_leaders, len(all_teams),
+        sum(1 for c in clusters if len(c.teams) >= 2),
+    )
+    return TopicPool(
+        topic_id=str(topic.request_id),
+        clusters=clusters,
+        assignment=assignment,
+        index_of=index_of,
+        leader_vecs=leader_vecs,
+        n_teams=len(all_teams),
+    )

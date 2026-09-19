@@ -1,0 +1,117 @@
+# Corroborate: pooled-corroboration AutoJudge with leave-one-team-out weighting.
+#
+# One class serves both phases. Declaring only judge_class means the runner
+# reuses the same instance for the nugget phase, so the pooled clustering is
+# computed once instead of twice.
+judge_class: "judges.corroborate.judge:CorroborateJudge"
+
+# ---------------------------------------------------------------- lifecycle
+create_nuggets: true      # the mined bank is a deliverable in its own right
+create_qrels: false       # MUST stay false: a qrels file in the output directory
+                          # also parses as four whitespace-separated columns, so
+                          # tira-cli cannot tell which file is the leaderboard
+                          # and the upload fails its format check.
+judge: true
+
+nugget_depends_on_responses: true   # the bank is mined from the pool of answers
+judge_uses_nuggets: false           # judge() rebuilds the pools deterministically
+judge_uses_qrels: false
+qrels_uses_nuggets: false
+
+force_recreate_nuggets: false       # resume: reuse <filebase>.nuggets.jsonl
+augment_report: false
+
+# ----------------------------------------------------------------- settings
+settings:
+  filebase: "{_name}"
+  # Local convenience only. Applied with setdefault, so a container that sets
+  # HF_HOME itself keeps its own baked-in model path.
+  hf_home: "/media/20TB/shared-cache/huggingface"
+  bi_encoder: "BAAI/bge-base-en-v1.5"
+  embed_batch_size: 256
+  min_sentence_words: 5
+  # tau=0.80 rather than a higher value: on kiddie the count of clusters
+  # corroborated by two or more teams peaks near 0.78 and collapses above 0.85,
+  # because BGE similarity for genuine paraphrases sits around 0.83. Calibrated
+  # properly on the pilot datasets via the tau-sweep below.
+  tau: 0.80
+  specificity_floor: 0.15
+  min_teams: 2              # >= 2 guarantees no bank cluster is one team's private
+                            # invention, so a LOTO weight can never reach zero
+  max_clusters: 40
+  vote_unit: "team"         # never "run": 83 runs come from only 25 teams
+
+nugget_settings: {}
+
+judge_settings:
+  cross_encoder: "cross-encoder/nli-deberta-v3-base"
+  use_cross_encoder: true
+  cross_batch_size: 128
+  cross_max_length: 512
+  band_low: 0.62            # below this, a near-match is not worth a model call
+  # 1, not 2: "corroborated by at least one other team" matches min_teams=2 for
+  # the bank. Requiring two other teams needs 3+ teams per cluster, which on a
+  # small pool zeroes NPREC for every run and silently takes NF1 and NF1_RANK
+  # down with it. Swept over {1,2,3} on the pilots.
+  min_other_teams: 1
+  attribution_mode: "auto"  # auto | inline | pool
+  doc_chunk_chars: 1200
+  max_doc_chunks: 6
+  on_missing_evals: "fix_aggregate"
+
+# ----------------------------------------------------------------- variants
+variants:
+  # The submitted configuration.
+  best: {}
+
+  # Ablation: does the leave-one-team-out correction change the ranking?
+  no-loto:
+    judge_settings:
+      min_other_teams: 0
+
+  # Ablation: per-run voting instead of per-team. Quantifies herd size.
+  run-votes:
+    settings:
+      vote_unit: "run"
+
+  # Ablation: is corroboration precision contributing beyond coverage?
+  coverage-only:
+    judge_settings:
+      min_other_teams: 0
+      attribution_mode: "pool"
+
+  # Ablation and CPU fallback: pure embedding similarity, no band adjudication.
+  no-cross-encoder:
+    judge_settings:
+      use_cross_encoder: false
+
+  # ragtime26 documents are NeuCLIR and not all English, so an English-only NLI
+  # model would return noise rather than an error. This swaps in a multilingual
+  # reranker for the attribution and band-adjudication steps.
+  multilingual:
+    judge_settings:
+      multilingual_cross_encoder: "BAAI/bge-reranker-v2-m3"
+      cross_batch_size: 32
+
+  # Bounded-runtime configuration for a CPU-only worker.
+  fast:
+    settings:
+      max_clusters: 25
+      embed_batch_size: 64
+    judge_settings:
+      use_cross_encoder: false
+      max_doc_chunks: 2
+
+# ------------------------------------------------------------------- sweeps
+sweeps:
+  tau-sweep:
+    settings:
+      tau: [0.72, 0.76, 0.80, 0.84, 0.88]
+  gate-sweep:
+    settings:
+      specificity_floor: [0.0, 0.10, 0.15, 0.20]
+    judge_settings:
+      min_other_teams: [1, 2, 3]
+
+# This judge makes no LLM calls (the endpoint-contract test xfails it).
+uses_llm: false
