@@ -1,0 +1,121 @@
+# TIRA code submission, run from CI.
+#
+# Why CI and not a laptop: the cluster this judge is developed on has no
+# container runtime at all (no docker, no podman, no buildah) and no root, so
+# rootless podman cannot be configured. A GitHub runner has Docker, so the image
+# is built and submitted from here instead.
+#
+# This is easy for us only because the judge declares `uses_llm: false`. The
+# local kiddie test that tira-cli runs inside the submission therefore needs no
+# network and no LLM endpoint, so there is no --allow-network, no cache
+# determinism proof, and no prompt cache to ship.
+#
+# Run it with dry_run: true first. That builds the image, runs it on kiddie, and
+# uploads nothing. Only when that is green, run again with dry_run: false, which
+# drops both --dry-run and --dataset so the judge runs on every dataset.
+name: TIRA code submission
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and test locally, upload nothing"
+        type: boolean
+        default: true
+      judge:
+        description: "Judge directory under judges/"
+        type: string
+        default: "corroborate"
+      variant:
+        description: "workflow.yml variant to submit"
+        type: string
+        default: "best"
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      # The image carries about 3 GB of encoder weights on top of the base
+      # image, which does not fit beside the runner's preinstalled toolchains.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # tira reads git metadata for provenance
+
+      # tira-cli submits the committed state of the current branch and refuses a
+      # dirty tree, so fail early and loudly rather than submitting a surprise.
+      - name: Require a clean tree on a named branch
+        run: |
+          git status --porcelain
+          test -z "$(git status --porcelain)" || { echo "tree is dirty"; exit 1; }
+          echo "branch: $(git branch --show-current)"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # CPU torch explicitly: the default resolution pulls a CUDA build with
+      # several GB of nvidia-* wheels that this runner has no use for.
+      - name: Install
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[all]'
+          pip install --upgrade tira
+
+      # tira-cli runs pytest as a submission gate, and two of the framework
+      # tests execute the judge for real, so the weights must be present here
+      # too. All three are fetched because the image bakes all three.
+      - name: Cache encoder weights
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.hf
+          key: hf-submit-v1
+
+      - name: Fetch encoder weights
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf
+        run: |
+          python - <<'PY'
+          from huggingface_hub import snapshot_download
+          for repo in ("BAAI/bge-base-en-v1.5",
+                       "cross-encoder/nli-deberta-v3-base",
+                       "BAAI/bge-reranker-v2-m3"):
+              print("fetching", repo, flush=True)
+              snapshot_download(repo)
+          PY
+
+      # tira-cli runs the suite itself as a submission gate, so a red suite here
+      # blocks the submission anyway. Running it first makes the failure obvious.
+      - name: Tests
+        env:
+          HF_HOME: ${{ github.workspace }}/.hf
+        run: python -m pytest tests -q
+
+      - name: Log in to TIRA
+        run: tira-cli login --token "${{ secrets.TIRA_TOKEN }}"
+
+      - name: Verify installation
+        run: tira-cli verify-installation --task trec-auto-judge --team "${{ vars.TIRA_TEAM }}"
+
+      - name: Code submission
+        run: |
+          set -euo pipefail
+          EXTRA=()
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            # kiddie is small and ships in the repo, so the local test is quick.
+            EXTRA=(--dry-run --dataset kiddie-20260605-training)
+          fi
+          tira-cli code-submission "${EXTRA[@]}" \
+            --path . \
+            --task trec-auto-judge \
+            --command 'auto-judge run --workflow /auto-judge/judges/${{ inputs.judge }}/workflow.yml --variant ${{ inputs.variant }} --rag-responses $inputDataset/runs/*/ --rag-topics $inputDataset/topics/*.jsonl --out-dir $outputDir'

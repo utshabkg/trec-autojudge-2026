@@ -5,10 +5,19 @@ on:
   workflow_dispatch: {}
   pull_request: {}
 
+# The encoder weights the judge needs. tests/test_empty_reports.py and
+# tests/test_endpoint_contract.py actually execute the judge, so the weights have
+# to be reachable here even though the unit tests themselves use a stub encoder.
+# bge-reranker-v2-m3 is left out: it is only used by the `multilingual` variant
+# and it is 2.2 GB, which is not worth paying for on every push.
+env:
+  HF_HOME: ${{ github.workspace }}/.hf
+  MODELS: BAAI/bge-base-en-v1.5 cross-encoder/nli-deberta-v3-base
+
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -19,10 +28,29 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      # CPU torch explicitly. Resolving `torch` from PyPI pulls a CUDA build
+      # with several GB of nvidia-* wheels that a CI runner cannot use.
       - name: Install dependencies
         run: |
-          pip install autojudge-base
-          pip install ".[test]"
-      - name: Run tests
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[all]'
+
+      - name: Cache encoder weights
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HF_HOME }}
+          key: hf-${{ hashFiles('.github/workflows/tests.yml') }}
+
+      - name: Fetch encoder weights
         run: |
-          python -m pytest tests
+          python - <<'PY'
+          import os
+          from huggingface_hub import snapshot_download
+          for repo in os.environ["MODELS"].split():
+              print("fetching", repo, flush=True)
+              snapshot_download(repo)
+          PY
+
+      - name: Run tests
+        run: python -m pytest tests -q

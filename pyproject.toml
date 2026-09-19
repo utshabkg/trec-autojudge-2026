@@ -26,10 +26,13 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
+# Deliberately light. encoders.py imports sentence-transformers and
+# transformers lazily inside the model loaders, so the package imports and the
+# unit tests run with numpy alone. Keeping the heavy stack in an extra stops CI
+# pulling a multi-gigabyte CUDA torch build just to run tests.
 dependencies = [
     "autojudge-base>=1.0.0",
     "tira>=0.0.100",
-    "sentence-transformers>=3.0",
     "numpy>=1.24",
     "scipy>=1.11",
 ]
@@ -42,11 +45,15 @@ test = [
 minima-llm = [
     "minima-llm>=0.2.5",
 ]
+encoders = [
+    "sentence-transformers>=3.0",
+    "transformers>=4.40",
+]
 evaluate = [
     "autojudge-evaluate>=1.0.0",
 ]
 all = [
-    "iris-autojudge[minima-llm,evaluate,test]",
+    "iris-autojudge[minima-llm,evaluate,test,encoders]",
     "tqdm>=4.0",
 ]
 
