@@ -70,8 +70,8 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/utshabkg/github.com-utshabkg-autojudge"
-Repository = "https://github.com/utshabkg/github.com-utshabkg-autojudge"
+Homepage = "https://github.com/utshabkg/trec-autojudge-2026"
+Repository = "https://github.com/utshabkg/trec-autojudge-2026"
 
 [tool.setuptools.packages.find]
 where = ["."]

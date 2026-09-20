@@ -11,6 +11,9 @@ rather than a generative LLM.
 **Status: work in progress. Numbers are not filled in yet.** Sections marked
 TODO are completed once the judge has been validated on the pilot datasets.
 
+`WORK_LOG.md` is the running record of the project: methodology, the reasoning
+behind each decision, what has been measured so far and what is still open.
+
 ## The problem this solves
 
 Neither `rag26-generation` nor `ragtime26-repgen` ships nuggets, qrels, or a
