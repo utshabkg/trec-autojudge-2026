@@ -81,12 +81,24 @@ class CorroborateJudge:
         hf_home: Optional[str],
         device: Optional[str],
     ) -> Encoders:
-        if hf_home:
-            # Local convenience so a shared model cache can be pointed at from
-            # workflow.yml. The container sets HF_HOME itself and bakes the
-            # weights in, so this stays unset there.
+        if hf_home and Path(hf_home).is_dir():
+            # Local convenience so a shared model cache can be named in
+            # workflow.yml without exporting anything.
+            #
+            # Guarded on the directory existing, because this value is a path on
+            # a specific machine and workflow.yml travels into the container.
+            # Setting it blindly is how the fourth CI dry run failed: HF_HOME was
+            # harmless because the image sets it and setdefault is then a no-op,
+            # but HF_HUB_CACHE is NOT set in the image, so setdefault planted a
+            # host path inside the container. HF_HUB_CACHE wins over HF_HOME, so
+            # the baked weights at /models/hub were never looked at and the judge
+            # tried to reach huggingface.co from a sandbox with no network.
+            #
+            # HF_HUB_CACHE is deliberately not set here at all: HF derives it
+            # from HF_HOME, and one variable is one thing that can go wrong.
             os.environ.setdefault("HF_HOME", hf_home)
-            os.environ.setdefault("HF_HUB_CACHE", str(Path(hf_home) / "hub"))
+        elif hf_home:
+            log.info("hf_home %s does not exist here, leaving HF_HOME alone", hf_home)
         cache_dir = getattr(llm_config, "cache_dir", None) if llm_config else None
         sig = (bi_encoder, cross_encoder, str(cache_dir), device)
         if self._encoders is None or self._enc_sig != sig:

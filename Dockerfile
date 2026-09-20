@@ -64,7 +64,10 @@ print('import chain OK on Python', sys.version.split()[0], \
 # Bake the encoder weights. snapshot_download rather than loading through
 # sentence-transformers, so the build does not depend on how a given
 # sentence-transformers version chooses to construct a model.
-ENV HF_HOME=/models
+# HF_HUB_CACHE is set explicitly as well as HF_HOME, so nothing downstream can
+# redirect the model lookup away from the baked weights.
+ENV HF_HOME=/models \
+    HF_HUB_CACHE=/models/hub
 RUN python -c "\
 from huggingface_hub import snapshot_download; \
 [snapshot_download(r) for r in ( \

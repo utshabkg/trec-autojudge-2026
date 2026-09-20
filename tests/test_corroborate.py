@@ -14,6 +14,7 @@ scoring maths with fully predictable inputs.
 
 from __future__ import annotations
 
+import os
 import random
 from pathlib import Path
 
@@ -299,6 +300,59 @@ def test_qrels_creation_is_disabled():
     """Emitting qrels beside the leaderboard breaks tira's upload format check."""
     judge = CorroborateJudge()
     assert judge.create_qrels([], [], llm_config=None) is None
+
+
+# ------------------------------------------------- model cache configuration
+
+
+def test_nonexistent_hf_home_does_not_touch_the_environment(monkeypatch):
+    """Regression: a host path in workflow.yml must not leak into the container.
+
+    workflow.yml names a shared model cache for local convenience, and that file
+    travels into the image. The fourth CI dry run failed because the value was
+    applied unconditionally: HF_HOME was harmless, since the image sets it and
+    setdefault is then a no-op, but HF_HUB_CACHE is not set in the image, so a
+    host path landed there instead. HF_HUB_CACHE wins over HF_HOME, so the baked
+    weights were never found and the judge tried to reach huggingface.co from a
+    sandbox with no network.
+    """
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    judge = CorroborateJudge()
+    judge._get_encoders(
+        None, bi_encoder="stub", cross_encoder=None, embed_batch_size=1,
+        cross_batch_size=1, cross_max_length=8,
+        hf_home="/definitely/not/a/real/path", device="cpu",
+    )
+    assert "HF_HOME" not in os.environ
+    assert "HF_HUB_CACHE" not in os.environ
+
+
+def test_existing_hf_home_sets_only_hf_home(monkeypatch, tmp_path):
+    """HF derives the hub cache from HF_HOME, so we set one variable, not two."""
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    judge = CorroborateJudge()
+    judge._get_encoders(
+        None, bi_encoder="stub", cross_encoder=None, embed_batch_size=1,
+        cross_batch_size=1, cross_max_length=8,
+        hf_home=str(tmp_path), device="cpu",
+    )
+    assert os.environ["HF_HOME"] == str(tmp_path)
+    assert "HF_HUB_CACHE" not in os.environ
+
+
+def test_hf_home_never_overrides_what_the_image_already_set(monkeypatch, tmp_path):
+    """setdefault semantics: the container's own HF_HOME must win."""
+    monkeypatch.setenv("HF_HOME", "/models")
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    judge = CorroborateJudge()
+    judge._get_encoders(
+        None, bi_encoder="stub", cross_encoder=None, embed_batch_size=1,
+        cross_batch_size=1, cross_max_length=8,
+        hf_home=str(tmp_path), device="cpu",
+    )
+    assert os.environ["HF_HOME"] == "/models"
 
 
 # ------------------------------------------------------- opt-in real-model test
