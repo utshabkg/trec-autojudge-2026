@@ -482,8 +482,23 @@ Project started from nothing.
 - Renamed the repo to `trec-autojudge-2026`.
 
 **Blocked on:** the shared TREC Active Participants password, needed to download
-any real data. Not our personal evalbase password, which returns 401, and evalbase
-now authenticates through Login.gov so it cannot be scripted.
+any real data. Established what it is not:
+
+- Not our personal `ir.nist.gov/evalbase` account password. Tried against the
+  release, returns 401.
+- Not retrievable by us: evalbase now authenticates through Login.gov, so it needs
+  the account holder and MFA.
+- Not available through TIRA: `tira-cli download` serves only non-confidential
+  datasets, so every pilot and both test sets return 405.
+- Not already in our possession from TREC RAG 2026. That work used the public
+  `TREC-RAG/trec-rag-data` repository and a Pyserini API token, so the participants
+  password was never needed and is nowhere on this machine.
+
+It is the shared password for `https://trec.nist.gov/act_part/act_part.html`
+(confirmed to be HTTP basic auth protected), used with username `trec2026`. The
+routes to it are the TREC 2026 registration mail from NIST, or asking the
+organizers directly through the private TIRA chat opened at registration, the
+`#trec2026-auto-judge` Slack channel, or dietz@cs.unh.edu.
 
 **Next, in order, once the data arrives:** probe whether documents are inline,
 reproduce the naive baseline on the pilots, run the length gate, fit parameters on
