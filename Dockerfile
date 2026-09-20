@@ -68,9 +68,19 @@ print('import chain OK on Python', sys.version.split()[0], \
 # redirect the model lookup away from the baked weights.
 ENV HF_HOME=/models \
     HF_HUB_CACHE=/models/hub
+# ignore_patterns matters here. A plain snapshot_download of these three repos
+# is 8.5 GiB, because they ship ONNX exports and a .bin duplicate of every
+# .safetensors: nli-deberta-v3-base alone carries four ONNX variants worth
+# 4.8 GiB that nothing here loads. Keeping safetensors only takes it to 3.2 GiB.
+# That is worth caring about because the real submission pushes this image to
+# registry.webis.de, and that round trip has already timed out once.
+# All three repos do publish safetensors, so dropping *.bin loses nothing.
 RUN python -c "\
 from huggingface_hub import snapshot_download; \
-[snapshot_download(r) for r in ( \
+[snapshot_download(r, ignore_patterns=[ \
+     'onnx/*', '*.onnx', '*.onnx_data', '*.bin', '*.h5', '*.msgpack', \
+     '*.ot', '*.tflite', 'openvino/*', 'coreml/*', '*.mlmodel', \
+ ]) for r in ( \
     'BAAI/bge-base-en-v1.5', \
     'cross-encoder/nli-deberta-v3-base', \
     'BAAI/bge-reranker-v2-m3', \
