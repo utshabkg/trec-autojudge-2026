@@ -25,6 +25,22 @@ RUN . /venv/bin/activate \
  && uv pip install "torch>=2.4" --index-url https://download.pytorch.org/whl/cpu \
  && uv pip install -e .[all]
 
+# Prove the import chain here, at build time, rather than discovering it half
+# way through a run. The base image's /venv is Python 3.11.0rc1, which predates
+# sys.get_int_max_str_digits (3.11.1). transformers 5.x reaches torch._dynamo
+# through integrations/deepgemm.py and dies on that interpreter, reporting only a
+# misleading "Could not import module 'PreTrainedModel'". pyproject.toml pins
+# transformers below 5 to avoid it; this check is what stops the pin silently
+# regressing.
+RUN . /venv/bin/activate && python -c "\
+import sys, torch, transformers, sentence_transformers as st; \
+from transformers import PreTrainedModel, AutoModelForSequenceClassification; \
+from sentence_transformers import SentenceTransformer; \
+assert transformers.__version__ < '5', transformers.__version__; \
+print('import chain OK on', sys.version.split()[0], \
+      '| torch', torch.__version__, '| transformers', transformers.__version__, \
+      '| sentence-transformers', st.__version__)"
+
 # Bake the encoder weights. snapshot_download rather than loading through
 # sentence-transformers, so the build does not depend on how a given
 # sentence-transformers version chooses to construct a model.
@@ -45,6 +61,16 @@ ENV HF_HUB_OFFLINE=1 \
     TRANSFORMERS_OFFLINE=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
     TOKENIZERS_PARALLELISM=false
+
+# And prove the weights load with the Hub switched off, which is how they will
+# be loaded in the sandbox. A missing file surfaces here, not mid-run.
+RUN . /venv/bin/activate && python -c "\
+from sentence_transformers import SentenceTransformer; \
+from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
+SentenceTransformer('BAAI/bge-base-en-v1.5', device='cpu', local_files_only=True); \
+AutoTokenizer.from_pretrained('cross-encoder/nli-deberta-v3-base', local_files_only=True); \
+AutoModelForSequenceClassification.from_pretrained('cross-encoder/nli-deberta-v3-base', local_files_only=True); \
+print('offline model load OK')"
 
 # git metadata for provenance (tira's runtime stats look for a repo at ./)
 ADD .git /auto-judge/.git

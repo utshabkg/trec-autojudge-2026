@@ -45,9 +45,21 @@ test = [
 minima-llm = [
     "minima-llm>=0.2.5",
 ]
+# Pinned below transformers 5 deliberately, and it is not a style choice.
+#
+# The trec-auto-judge base image ships /venv on Python 3.11.0rc1, a release
+# candidate that predates sys.get_int_max_str_digits (added in 3.11.1).
+# transformers 5.x imports integrations/deepgemm.py from modeling_utils, which
+# touches torch._dynamo, whose import needs that function. The result inside the
+# container is a misleading "Could not import module 'PreTrainedModel'".
+#
+# transformers 4.57 has no deepgemm module and modeling_utils never imports it,
+# and plain `import torch` is fine on that interpreter, so staying on 4.x is
+# enough. sentence-transformers 6.x hard-requires transformers>=5.0, which is
+# why that is capped too.
 encoders = [
-    "sentence-transformers>=3.0",
-    "transformers>=4.40",
+    "sentence-transformers>=5.0,<6",
+    "transformers>=4.41,<5",
 ]
 evaluate = [
     "autojudge-evaluate>=1.0.0",
