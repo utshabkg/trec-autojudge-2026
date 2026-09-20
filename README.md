@@ -1,6 +1,6 @@
 # Corroborate: a pooled-corroboration AutoJudge with leave-one-team-out weighting
 
-TREC 2026 AutoJudge submission from team `iris`.
+TREC 2026 AutoJudge submission from team `IRIS-MST`.
 
 Corroborate scores a RAG or report-generation run without human nuggets, without
 qrels, and without access to the retrieval corpus. It builds its own nugget bank
@@ -192,9 +192,9 @@ only for the first ten topics of each dataset's topics file, in file order.
 Parameters were fitted on the pilot datasets, never on the 2026 test topics.
 `scrub-log.jsonl` is included as the policy asks.
 
-Team `iris` submitted two generation runs to TREC RAG 2026, so two of the 83
-anonymized `rag26` runs are expected to be ours. We made no attempt to identify
-them, including by comparison against our own submissions. The judge treats all
+We submitted two generation runs to TREC RAG 2026 under the team id `iris`, so
+two of the 83 anonymized `rag26` runs are expected to be ours. We made no attempt
+to identify them, including by comparison against our own submissions. The judge treats all
 runs identically, and leave-one-team-out removes the self-credit mechanism by
 which a team's own runs could otherwise be advantaged.
 

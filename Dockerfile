@@ -1,4 +1,4 @@
-# Corroborate: the TIRA code submission image for team iris.
+# Corroborate: the TIRA code submission image for team IRIS-MST.
 #
 # The judge makes no LLM calls, so this image needs no network at runtime. What
 # it does need is the encoder weights, and the TIRA sandbox reaches nothing but

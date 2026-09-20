@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "iris-autojudge"
+name = "iris-mst-autojudge"
 version = "1.0.0"
-description = "Corroborate: a pooled-corroboration AutoJudge with leave-one-team-out weighting (TREC 2026 AutoJudge, team iris)"
+description = "Corroborate: a pooled-corroboration AutoJudge with leave-one-team-out weighting (TREC 2026 AutoJudge, team IRIS-MST)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "team iris"}
+    {name = "team IRIS-MST"}
 ]
 keywords = ["trec", "autojudge", "rag", "evaluation", "ir", "nuggets", "pooling"]
 classifiers = [
@@ -53,13 +53,13 @@ evaluate = [
     "autojudge-evaluate>=1.0.0",
 ]
 all = [
-    "iris-autojudge[minima-llm,evaluate,test,encoders]",
+    "iris-mst-autojudge[minima-llm,evaluate,test,encoders]",
     "tqdm>=4.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/utshabkg/iris-autojudge"
-Repository = "https://github.com/utshabkg/iris-autojudge"
+Homepage = "https://github.com/utshabkg/github.com-utshabkg-autojudge"
+Repository = "https://github.com/utshabkg/github.com-utshabkg-autojudge"
 
 [tool.setuptools.packages.find]
 where = ["."]
