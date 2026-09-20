@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-20.** This file is the single running record of the
+**Last updated: 2026-09-20 (data downloaded, validation plan revised).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -562,7 +562,12 @@ is a question for the organizers rather than something we can fix in the
 repository. Trimming the image from 8.5 to 3.2 GiB reduces the exposure.
 
 **Compute.** Two RTX 6000 Ada, shared with other users who typically hold about
-38 GB on each card, so plan for roughly 10 GiB free rather than 48. The driver is
+38 GB on each card, so plan for roughly 10 GiB free rather than 48. That headroom
+is not stable: the first pilot run died to a CUDA OOM when the neighbouring job
+grew mid-run, and a batch of 256 through `bge-base` wants 1.3 GiB in one
+activation. The encoders now halve the batch on OOM and finally move to CPU, so
+contention costs time rather than the run, and the default batch sizes are 64 and
+32 so that ladder is a safety net rather than the normal path. The driver is
 CUDA 12.9, which caps torch at `2.11.0+cu128` and vLLM at 0.13.0. Note that
 `torch.cuda.is_available()` returns True on this host even when CUDA
 initialisation has failed, so GPU availability must be verified with a real
@@ -604,8 +609,38 @@ Project started from nothing.
   outputs.
 - Renamed the repo to `trec-autojudge-2026`.
 
-**Blocked on:** the shared TREC Active Participants password, needed to download
-any real data. Established what it is not:
+**Resolved later the same day:** the credentials arrived. One documentation bug
+worth reporting upstream: the howto states the download user is `trec2026`, which
+returns 401. The working user is **`trec2025`** with the same password.
+
+Data fetched, 1.54 GiB compressed and 4.8 GiB extracted, stored under
+`/media/12TB/shared/datasets/trec-autojudge-2026` (itself a symlink onto the 20 TB
+volume) and reached through a gitignored `local-data` symlink so the tooling's
+hardcoded path keeps working.
+
+Then, in order:
+
+- **Task zero resolved.** Documents are inline in both releases, so attribution
+  path A works and no corpus is needed. The largest open risk in the plan is
+  closed.
+- **Both releases are English**, so the multilingual reranker is not needed. It is
+  2.16 GiB of the 3.2 GiB baked into the image and is a candidate for removal.
+- **rag26 ships the RAGTIME citation format, not the one its own track spec
+  declares.** Reading citations through the framework accessor rather than
+  touching `.responses` is what saved this from being a silent
+  every-citation-misread bug.
+- **Discovered that no release contains ground truth**, which invalidated the
+  original validation plan. Replaced it with the TIRA-upload route, see section 6.
+- **Read the real competitive field** off TIRA's public pilot leaderboards, which
+  moved the target from "beat length" to "reach about 0.70", and revealed that
+  length is nearly uninformative on rag25-gen (0.152) though strong on ragtime25
+  (0.558).
+- **Made the encoders survive a contended GPU** after the first pilot run died to
+  an OOM.
+- Started the first real pilot run, on `rag25-gen`, the closest analogue to rag26.
+
+**Previously blocked on** the shared TREC Active Participants password. Recorded
+here because the four dead ends are worth not retrying:
 
 - Not our personal `ir.nist.gov/evalbase` account password. Tried against the
   release, returns 401.
