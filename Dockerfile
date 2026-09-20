@@ -6,6 +6,31 @@
 # and the Hub is switched off, which also makes runs reproducible.
 FROM ghcr.io/trec-auto-judge/trec-auto-judge-base:dev-0.0.1
 
+# --------------------------------------------------------------------------
+# Why this image does not use the base image's /venv
+# --------------------------------------------------------------------------
+# The base image's system Python, and therefore /venv, is 3.11.0rc1: a release
+# candidate. torch's _dynamo polyfills do not survive on it, and any modern
+# transformers reaches _dynamo during `from transformers import PreTrainedModel`:
+#
+#   transformers 5.x: modeling_utils -> integrations/deepgemm.py
+#                     -> @torch._dynamo.assume_constant_result
+#                     -> AttributeError: 'sys' has no attribute
+#                        'get_int_max_str_digits'   (added in Python 3.11.1)
+#
+#   transformers 4.x: modeling_utils -> integrations/flex_attention.py
+#                     -> @torch.compiler.disable -> import torch._dynamo
+#                     -> ValueError: Duplicate dispatch rule for sys.intern
+#
+# Both were observed in CI. Capping transformers is therefore not a fix: the
+# interpreter is the problem. So we build our own on a released Python and put it
+# first on PATH, leaving the base image's /venv untouched.
+RUN uv --version \
+ && uv python install 3.12 \
+ && uv venv --python 3.12 /venv312
+ENV PATH="/venv312/bin:$PATH" \
+    VIRTUAL_ENV="/venv312"
+
 # README.md is not optional here: pyproject.toml declares `readme = "README.md"`,
 # so an editable install fails without it.
 ADD judges /auto-judge/judges
@@ -13,39 +38,34 @@ ADD pyproject.toml README.md /auto-judge/
 
 WORKDIR /auto-judge
 
-# Install into the base image's /venv (its PATH runs /venv/bin). A --system
-# install would be invisible at runtime, which is the top troubleshooting item
-# in the submission HowTo.
-#
-# CPU torch first, and explicitly: resolving `torch` from PyPI pulls a CUDA
-# build with several GB of nvidia-* wheels that a TIRA worker cannot use. Doing
-# it before the project install means sentence-transformers finds torch already
-# satisfied and does not drag the CUDA variant back in.
-RUN . /venv/bin/activate \
- && uv pip install "torch>=2.4" --index-url https://download.pytorch.org/whl/cpu \
- && uv pip install -e .[all]
+# CPU torch explicitly, and first: resolving `torch` from PyPI pulls a CUDA build
+# with several GB of nvidia-* wheels that a TIRA worker cannot use, and doing it
+# before the project install stops sentence-transformers dragging it back in.
+RUN uv pip install --python /venv312/bin/python \
+        torch --index-url https://download.pytorch.org/whl/cpu \
+ && uv pip install --python /venv312/bin/python -e '.[all]'
 
-# Prove the import chain here, at build time, rather than discovering it half
-# way through a run. The base image's /venv is Python 3.11.0rc1, which predates
-# sys.get_int_max_str_digits (3.11.1). transformers 5.x reaches torch._dynamo
-# through integrations/deepgemm.py and dies on that interpreter, reporting only a
-# misleading "Could not import module 'PreTrainedModel'". pyproject.toml pins
-# transformers below 5 to avoid it; this check is what stops the pin silently
-# regressing.
-RUN . /venv/bin/activate && python -c "\
+# Prove the import chain at build time rather than discovering it half way
+# through a run. This check is what turned the two failures above from confusing
+# runtime errors into a build that stops with the reason on screen.
+RUN python -c "\
 import sys, torch, transformers, sentence_transformers as st; \
 from transformers import PreTrainedModel, AutoModelForSequenceClassification; \
 from sentence_transformers import SentenceTransformer; \
-assert transformers.__version__ < '5', transformers.__version__; \
-print('import chain OK on', sys.version.split()[0], \
-      '| torch', torch.__version__, '| transformers', transformers.__version__, \
-      '| sentence-transformers', st.__version__)"
+import torch._dynamo; \
+print('import chain OK on Python', sys.version.split()[0], \
+      '| torch', torch.__version__, \
+      '| transformers', transformers.__version__, \
+      '| sentence-transformers', st.__version__)" \
+ && which auto-judge \
+ && auto-judge --help > /dev/null \
+ && echo "auto-judge resolves from /venv312"
 
 # Bake the encoder weights. snapshot_download rather than loading through
 # sentence-transformers, so the build does not depend on how a given
 # sentence-transformers version chooses to construct a model.
 ENV HF_HOME=/models
-RUN . /venv/bin/activate && python -c "\
+RUN python -c "\
 from huggingface_hub import snapshot_download; \
 [snapshot_download(r) for r in ( \
     'BAAI/bge-base-en-v1.5', \
@@ -62,9 +82,9 @@ ENV HF_HUB_OFFLINE=1 \
     HF_HUB_DISABLE_TELEMETRY=1 \
     TOKENIZERS_PARALLELISM=false
 
-# And prove the weights load with the Hub switched off, which is how they will
-# be loaded in the sandbox. A missing file surfaces here, not mid-run.
-RUN . /venv/bin/activate && python -c "\
+# And prove the weights load with the Hub switched off, which is how they will be
+# loaded in the sandbox. A missing file surfaces here, not mid-run.
+RUN python -c "\
 from sentence_transformers import SentenceTransformer; \
 from transformers import AutoModelForSequenceClassification, AutoTokenizer; \
 SentenceTransformer('BAAI/bge-base-en-v1.5', device='cpu', local_files_only=True); \
