@@ -30,7 +30,11 @@ from .textutil import cache_key, normalize
 log = logging.getLogger(__name__)
 
 # Below this much free VRAM we stay on CPU rather than risk an OOM mid-run.
-_MIN_FREE_VRAM_BYTES = 3 * 1024**3
+# These GPUs are shared and another user's job routinely grows to ~37 GiB of the
+# 47 GiB, so headroom measured at startup is not headroom five minutes later. The
+# threshold is deliberately generous and is only the first line of defence: the
+# real protection is the OOM retry in _batched_with_oom_retry.
+_MIN_FREE_VRAM_BYTES = 6 * 1024**3
 
 
 def pick_device(prefer: Optional[str] = None) -> str:
@@ -206,6 +210,65 @@ class Encoders:
         self._entail_index: Optional[int] = None
         self._cross_labels: int = 0
 
+    # ------------------------------------------------------------ OOM handling
+
+    def _move_to_cpu(self, why: str) -> None:
+        """Give up on the GPU for the rest of the run.
+
+        Loaded models are moved rather than reloaded, and un-halved, because fp16
+        on CPU is far slower than fp32.
+        """
+        log.warning("moving encoders to CPU: %s", why)
+        self.device = "cpu"
+        try:
+            if self._bi is not None:
+                self._bi.to("cpu")
+            if self._cross is not None:
+                self._cross.float().to("cpu")
+        except Exception as exc:
+            log.warning("could not move models, will reload on CPU: %s", exc)
+            self._bi = None
+            self._cross = None
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+
+    def _batched_with_oom_retry(self, items, run, batch_size: int, what: str):
+        """Run `run(chunk)` over `items`, surviving a contended GPU.
+
+        On CUDA OOM the batch size is halved and the whole pass retried, down to
+        one item, and then the models move to CPU and it is retried again. This
+        matters because the alternative is losing a multi-hour run to another
+        user's job growing, and because a run that silently died is worse than a
+        slow one.
+        """
+        import torch
+
+        bs = max(1, batch_size)
+        while True:
+            try:
+                out = []
+                for i in range(0, len(items), bs):
+                    out.extend(run(items[i : i + bs]))
+                return out
+            except torch.OutOfMemoryError:
+                try:
+                    torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                if bs > 1:
+                    bs = max(1, bs // 2)
+                    log.warning("CUDA OOM in %s, retrying at batch_size=%d", what, bs)
+                    continue
+                if self.device != "cpu":
+                    self._move_to_cpu(f"OOM in {what} even at batch_size=1")
+                    bs = max(1, batch_size)
+                    continue
+                raise
+
     # ---------------------------------------------------------------- bi-encoder
 
     def _load_bi(self):
@@ -241,15 +304,24 @@ class Encoders:
                 todo_keys.append(k)
 
         if todo:
-            model = self._load_bi()
-            vecs = model.encode(
-                todo,
-                batch_size=self.embed_batch_size,
-                normalize_embeddings=True,
-                show_progress_bar=False,
-                convert_to_numpy=True,
+            def _encode(chunk):
+                model = self._load_bi()
+                return list(
+                    model.encode(
+                        chunk,
+                        batch_size=len(chunk),
+                        normalize_embeddings=True,
+                        show_progress_bar=False,
+                        convert_to_numpy=True,
+                    )
+                )
+
+            vecs = np.asarray(
+                self._batched_with_oom_retry(
+                    todo, _encode, self.embed_batch_size, "embed"
+                ),
+                dtype=np.float32,
             )
-            vecs = np.asarray(vecs, dtype=np.float32)
             self.cache.put_vectors(list(zip(todo_keys, vecs)))
             for k, v in zip(todo_keys, vecs):
                 hit[k] = v
@@ -318,10 +390,9 @@ class Encoders:
         if todo:
             import torch
 
-            model = self._load_cross()
-            scores: List[float] = []
-            with torch.inference_mode():
-                for batch in _chunks(todo, self.cross_batch_size):
+            def _score(batch):
+                model = self._load_cross()
+                with torch.inference_mode():
                     enc = self._cross_tok(
                         [a for a, _ in batch],
                         [b for _, b in batch],
@@ -332,17 +403,21 @@ class Encoders:
                     ).to(self.device)
                     logits = model(**enc).logits.float()
                     if self._cross_labels == 1:
-                        s = torch.sigmoid(logits.squeeze(-1))
+                        out = torch.sigmoid(logits.squeeze(-1))
                     elif self._entail_index is not None:
-                        s = torch.softmax(logits, dim=-1)[:, self._entail_index]
+                        out = torch.softmax(logits, dim=-1)[:, self._entail_index]
                     else:
                         # Unlabelled multi-class head: fall back to index 1,
                         # which is the entailment slot in every NLI checkpoint
                         # we ship. Logged loudly because it is a guess.
                         log.warning("cross-encoder %s has no entailment label, using index 1",
                                     self.cross_name)
-                        s = torch.softmax(logits, dim=-1)[:, min(1, logits.shape[-1] - 1)]
-                    scores.extend(s.detach().cpu().tolist())
+                        out = torch.softmax(logits, dim=-1)[:, min(1, logits.shape[-1] - 1)]
+                    return out.detach().cpu().tolist()
+
+            scores: List[float] = self._batched_with_oom_retry(
+                todo, _score, self.cross_batch_size, "cross-encode"
+            )
             self.cache.put_scores(list(zip(todo_keys, scores)))
             for k, s in zip(todo_keys, scores):
                 hit[k] = s

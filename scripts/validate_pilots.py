@@ -1,5 +1,17 @@
 #!/usr/bin/env python3
-"""Measure a judge against a pilot leaderboard, and against the length confound.
+"""Measure a judge against the length confound, and against truth when available.
+
+IMPORTANT: no AutoJudge release distributes ground truth. The pilot tarballs
+contain runs, topics, a dataset.yml and metadata, and nothing else. The 2026 test
+tarballs ship only `eval/*/random.eval.jsonl`, a placeholder. `tira-cli download
+--truths` is refused for every confidential dataset. So `--truth` is optional
+here, and the truth-free mode is the one we actually use.
+
+Without truth this reports what can still be computed locally and is still
+decisive: how much each measure is explained by answer length, and whether each
+measure separates the systems at all. The correlation against human truth comes
+from uploading to TIRA for a pilot dataset and reading the score back, because
+TIRA holds the truth and meta-evaluates server side.
 
 Raw Kendall is not evidence that a judge works. The starter kit's naive judge
 scores by answer length and already reaches Kendall 0.558 on ragtime25, so a
@@ -205,11 +217,76 @@ def _fmt(v: Optional[float], width: int = 7) -> str:
 # ---------------------------------------------------------------------- main
 
 
+def report_without_truth(label: str, eval_lb: dict, args) -> int:
+    """What is still measurable with no ground truth, and it is not nothing.
+
+    Two questions matter and neither needs truth:
+
+    1. Is the measure a restatement of answer length? Length is the confound that
+       makes raw correlations untrustworthy. On ragtime25 the naive length
+       baseline reaches Kendall 0.558, though on rag25-gen it only reaches 0.152,
+       so how much this matters is dataset dependent.
+    2. Does the measure separate the systems at all? A measure with few distinct
+       aggregate values has its order decided by input order under tauap_b, which
+       is effectively random.
+
+    The correlation against human assessors is obtained by uploading to TIRA for
+    a pilot dataset and reading back Max (Kendall) and Max (Tauap B).
+    """
+    lengths = length_per_run(args.runs) if args.runs else {}
+    print(f"\n=== {label} (no local truth, so confound and separation only) ===")
+    print(f"eval measures : {', '.join(sorted(eval_lb))}")
+    if not lengths:
+        print("no --runs given, so the length confound cannot be computed")
+    else:
+        print(f"LENGTH computed for {len(lengths)} runs from {args.runs}")
+
+    header = (f"{'measure':<12} {'runs':>5} {'distinct':>9} {'vs LENGTH':>10} "
+              f"{'spearman':>9}  verdict")
+    print("\n" + header)
+    print("-" * len(header))
+    worst = None
+    for em in sorted(eval_lb):
+        agg = aggregate(eval_lb[em])
+        if not agg:
+            print(f"{em:<12} {'-':>5} {'-':>9} {'-':>10} {'-':>9}  no aggregate rows")
+            continue
+        distinct = len({round(v, 12) for v in agg.values()})
+        k = sp = None
+        if lengths:
+            shared = sorted(set(agg) & set(lengths))
+            if len(shared) >= args.min_runs:
+                ev = [agg[r] for r in shared]
+                lv = [lengths[r] for r in shared]
+                k = _safe(correlation, ev, lv, "kendall")
+                sp = _safe(correlation, ev, lv, "spearman")
+        notes = []
+        if distinct <= 1:
+            notes.append("CONSTANT, carries no ranking")
+        elif distinct < max(3, 0.5 * len(agg)):
+            notes.append(f"only {distinct} distinct values, ties hurt tauap_b")
+        if k is not None and abs(k) > 0.85:
+            notes.append("LENGTH IN A HAT")
+        elif k is not None and abs(k) > 0.70:
+            notes.append("heavily length-driven")
+        print(f"{em:<12} {len(agg):>5} {distinct:>9} {_fmt(k,10)} {_fmt(sp,9)}  "
+              f"{'; '.join(notes) if notes else 'ok'}")
+        if k is not None:
+            worst = abs(k) if worst is None else max(worst, abs(k))
+
+    print("\nNext step: upload this leaderboard to TIRA for a pilot dataset and read")
+    print("back Max (Kendall) and Max (Tauap B). Published naive length baselines to")
+    print("beat: ragtime25 0.558, rag25-gen 0.152, dragun-repgen 0.391, rag24 0.376.")
+    print("Median submission on those pilots is around 0.70 to 0.74, best 0.80 to 0.85.")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--truth", type=Path, required=True)
+    ap.add_argument("--truth", type=Path, default=None,
+                    help="optional. No release ships truth, so this is normally omitted")
     ap.add_argument("--eval", type=Path, required=True, dest="eval_path")
     ap.add_argument("--runs", type=Path, default=None,
                     help="run directory, for the LENGTH confound. Omit to skip those columns")
@@ -220,14 +297,16 @@ def main() -> int:
     args = ap.parse_args()
 
     label = args.label or args.eval_path.parent.name
-    truth_lb = load_leaderboard(args.truth)
     eval_lb = load_leaderboard(args.eval_path)
-    if not truth_lb:
-        print(f"FAIL: no usable rows in {args.truth}")
-        return 2
     if not eval_lb:
         print(f"FAIL: no usable rows in {args.eval_path}")
         return 2
+    truth_lb = load_leaderboard(args.truth) if args.truth else {}
+    if args.truth and not truth_lb:
+        print(f"FAIL: no usable rows in {args.truth}")
+        return 2
+    if not truth_lb:
+        return report_without_truth(label, eval_lb, args)
 
     lengths = length_per_run(args.runs) if args.runs else {}
 

@@ -61,19 +61,39 @@ effectively random, so scores must stay continuous and must never be thresholded
 
 ### The bar to beat
 
-**Measured, from the public TIRA leaderboards on the pilot datasets:**
+**Measured**, read from TIRA's public evaluations API for all four pilot
+datasets. These are real correlations against the held-out human assessments, so
+they are the actual competitive landscape, not estimates.
 
-| Judge | Kendall | tauap_b | Dataset |
-|---|---|---|---|
-| shipped naive baseline (scores by answer **length**, plus a random number) | 0.558 | 0.373 | ragtime25 |
-| best public judge (`trema-unh` `prefnugget-best`, preference-based, LLM) | 0.781 | 0.625 | ragtime25 |
-| shipped naive baseline | 0.376 | 0.244 | rag24 |
+| Pilot | naive (length) Kendall / tauap_b | median submission | best submission | scored entries |
+|---|---|---|---|---|
+| `ragtime25` | 0.558 / 0.373 | 0.732 | 0.802 | 79 |
+| `rag25-gen` | **0.152** / 0.119 | 0.737 | 0.849 | 68 |
+| `dragun-repgen` | 0.391 / 0.184 | 0.700 | 0.821 | 47 |
+| `rag24` | 0.376 / 0.244 | 0.592 | 0.716 | 66 |
 
-**Length alone reaching 0.558 is the single most important number in this
-project.** It means raw Kendall cannot demonstrate that a judge works, because a
-measure that merely re-expresses answer length will score around 0.55 while
-adding nothing a word count does not already give. Our validation protocol
-(section 6) is built around that problem.
+Two conclusions, and the first corrects an assumption we had been designing
+against.
+
+**The length confound is track-specific, not universal.** Length reaches 0.558 on
+ragtime25 report generation but only **0.152** on rag25-gen, the pilot most
+analogous to our main target rag26. So on RAG generation, answer length is close
+to uninformative, and the worry that a coverage measure might merely re-discover
+length applies mainly to the RAGTIME side. We keep the length diagnostics, because
+on ragtime26 they matter, but "beats length" is a weak bar on rag26 rather than
+the central hurdle.
+
+**The real bar is much higher than beating length.** The median submission sits
+around 0.70 to 0.74 and the best around 0.80 to 0.85 on every pilot. Being merely
+better than a word count would put us near the bottom of a field of 47 to 79
+entries. That is the number to design against.
+
+Worth noting for method choice: the top entry on rag25-gen is
+`trema-unh/prefnugget-queryonly` at 0.849, where "queryonly" means nuggets derived
+from the query alone rather than from the responses. On RAG generation, query-only
+nuggets outperform response-grounded ones for that team. Our `query-only` variant
+exists as a fallback and this suggests it deserves to be run as a serious
+contender rather than an ablation.
 
 ---
 
@@ -264,6 +284,78 @@ Everything here is measured. The provenance of each is given, because the
 difference between "verified on real data" and "verified on a synthetic toy"
 matters.
 
+### The datasets, now downloaded and probed
+
+Both releases fetched on 2026-09-19, 1.54 GiB compressed and 4.8 GiB extracted,
+stored on the large volume and symlinked as `local-data`.
+
+Counts match the announced figures exactly: rag26 **83 generation runs, 25 teams,
+119 topics, 9,877 reports**; ragtime26 **49 repgen runs, 10 teams, 103 topics,
+5,047 reports**.
+
+**Task zero is resolved: documents are inline in both.** rag26 99.1% of reports,
+median 13 documents each, median 7,549 characters per document. ragtime26 99.7%,
+median 10 documents, median 4,128 characters. So **attribution path A works and no
+corpus is needed**, which was the single largest open risk in the plan. The
+inference from file sizes that led us to expect this was correct.
+
+**Both releases are English.** ragtime26 documents carry `lang: eng` where the
+field is present and are entirely Latin script on inspection, and rag26 likewise.
+The concern that ragtime26 would be multilingual NeuCLIR text, which would have
+made an English NLI model return noise rather than an error, does not apply to
+this release. The organizers appear to have released the English subset. The
+`multilingual` variant stays as a documented fallback but is not needed, which
+also means the 2.16 GiB reranker is dead weight in the container image.
+
+**rag26 does not use the citation format its own track spec describes.**
+`track_specs.yml` declares rag26 as `sentence_type: [rag24, neuclir]`, meaning
+integer indices into `references`. The released data is entirely
+`{doc_id: confidence}` dictionaries, the RAGTIME format, and its metadata keys are
+identical to ragtime26's. The organizers evidently harmonised both tracks when
+building the release. Our code is unaffected because it reads citations only
+through `Report.get_sentences_with_citations()`, which normalises all three
+conventions. Had we touched `.responses` directly, as the obvious implementation
+would, every citation in rag26 would have been silently misread.
+
+**Runs per team, which is what the leave-one-team-out design turns on:** rag26
+3.32, ragtime26 **4.90**. Counting runs rather than teams would therefore have
+let a single RAGTIME team cast nearly five votes for its own phrasing.
+
+**Undocumented extras in the releases.** rag26 additionally ships 118 *retrieval*
+runs, and ragtime26 ships 37 `mlir` runs and a **`nuggets/` directory with 15
+participant-contributed nugget banks**. The nugget banks are the ones the
+organizers mentioned, with a warning about circularity if a nugget-based judge
+consumes banks produced by systems it is judging. We are not using them, and our
+bank is mined from the pool instead, but they are an available signal.
+
+### No ground truth exists locally, and what we do instead
+
+**Nothing in any release contains human ground truth.** Established by
+elimination:
+
+- The pilot tarballs (`v0.2.1`) contain `runs/`, `topics/`, `metadata/` and a
+  `dataset.yml`, with no `eval/` directory and no `truth:` key in any manifest.
+  The release page lists exactly what is included and truth is not among it.
+- The 2026 test tarballs ship only `eval/*/random.eval.jsonl`, the placeholder the
+  howto describes.
+- `tira-cli download --dataset X --truths` is refused for every confidential
+  dataset, pilots included.
+- Both release pages offer only the anonymized-runs tarballs, nothing else.
+
+An earlier reading of the documentation had suggested the pilots ship
+`*.official.eval.jsonl`. They do not. That filename appears in TIRA's *evaluator
+command lines*, referring to files that live on TIRA's server.
+
+**So local meta-evaluation against human truth is impossible, and the route is
+TIRA.** The pilot datasets have real truth held server side and public
+leaderboards. We run our judge on a pilot locally, upload the leaderboard, and
+read back `Max (Kendall)` and `Max (Tauap B)` computed by the organizers'
+evaluator against assessments we never see. This is how the track is designed to
+work, and it is better evidence than a local proxy would have been. What it costs
+us is diagnostic richness: we cannot compute discordant-pair accuracy without the
+truth leaderboard, so the length check falls back to correlating each measure
+against length directly, which needs no truth.
+
 ### Verified against the real infrastructure
 
 **The qrels upload trap.** tira's `TrecEvalLeaderboard.matching_files` accepts any
@@ -359,17 +451,40 @@ runs and produces a well-formed, upload-valid leaderboard.
 Stated before seeing the data, so that the numbers we report later are not the
 product of searching.
 
+**Revised on 2026-09-19**, because the original plan assumed the pilots ship
+human truth and they do not (section 5). Validation now has two halves: what we
+measure locally without truth, and what we get back from TIRA.
+
 The 2026 test releases ship a **random placeholder** truth file, so local
 correlations on the test data are meaningless by construction and using them to
-choose anything would be tuning on the test set. Real validation happens on the
-four pilot datasets that ship genuine human truth: `ragtime25`, `rag25-gen`,
-`rag25-auggen`, `dragun-repgen`.
+choose anything would be tuning on the test set.
 
-### Reproduce the anchors first
+### Half one, local and truth-free
 
-Before trusting any number from our own judge, run the shipped naive judge on the
-same files and confirm roughly 0.558 Kendall on ragtime25. If that does not
-reproduce, the harness is wrong rather than the judge.
+`scripts/validate_pilots.py` without `--truth` reports, per measure:
+
+- **correlation against answer LENGTH**, the confound. Above about 0.85 in
+  absolute value the measure is length wearing a hat. How much this matters is
+  dataset dependent: length scores 0.558 on ragtime25 but only 0.152 on rag25-gen.
+- **number of distinct aggregate values**, because a measure that separates few
+  systems has its order decided by input order under `tauap_b`, effectively at
+  random.
+
+Both are computable from our own output plus the run files, so they gate every
+run before it is worth uploading anything.
+
+### Half two, the correlation that counts, from TIRA
+
+Run on a pilot locally, upload the leaderboard to that pilot's TIRA dataset, read
+back `Max (Kendall)` and `Max (Tauap B)` as computed by the organizers' evaluator
+against held-out assessments. Pilot leaderboards are public, so our score sits in
+a field of 47 to 79 comparable entries, which is a far more honest read than any
+number we could produce ourselves.
+
+Two constraints on using it. Uploads are public submissions, so this is for a
+handful of considered runs and not for sweeping parameters. And it gives only the
+summary correlations, not per-pair detail, so design iteration has to lean on the
+local half.
 
 ### The length gate, which is the decisive test
 
@@ -391,19 +506,27 @@ organizers compute.
 
 ### Go and no-go bars
 
+Set against the measured field rather than against zero.
+
 | Gate | Bar | If missed |
 |---|---|---|
-| Beats length | best measure at or above **0.65** Kendall on ragtime25 **and** `disc-acc` at or above **0.60** on 3 of 4 pilots | we do not have a judge, fall back to a simpler configuration and say so plainly |
-| Competitive | at or above 0.72 Kendall on ragtime25 | acceptable to submit |
-| Stretch | at or above 0.781 Kendall or 0.625 `tauap_b` | claim it, with the pilot caveat |
-| Per-measure emission | every emitted measure at or above **+0.30** Kendall against every truth measure on all four pilots | drop that measure, to protect `Min (kendall)` |
-| `topheavy` variant | beats `best` on `tauap_b` on all four pilots | do not ship it |
+| Not length in disguise | every emitted measure below 0.85 absolute correlation with LENGTH, checked locally | drop or rework that measure |
+| Separates systems | every measure has distinct aggregate values for most runs | find the rounding or the degenerate setting |
+| Beats the naive baseline | `Max (Kendall)` from TIRA clearly above 0.558 on ragtime25 and above 0.152 on rag25-gen | the method does not work, say so plainly |
+| **Competitive** | **at or above 0.70, the median of the field** | acceptable to submit, but report the standing honestly |
+| Strong | at or above 0.80 on ragtime25 or rag25-gen | a real result |
+| `topheavy` variant | beats `best` on `tauap_b` on the pilots we test | do not ship it |
+
+The competitive bar is the one that matters. Beating a word count on ragtime25
+would still leave us below every one of the 79 entries on that leaderboard.
 
 ### Avoiding pilot overfitting
 
-Parameters are fitted on `dragun-repgen` and `rag25-auggen` only. `rag25-gen` (the
-rag26 analogue) and `ragtime25` (the ragtime26 analogue) are held out and reported
-once. A parameter value is accepted only if its sweep neighbours are within 0.02
+Parameters are fitted using the local truth-free diagnostics and on
+`dragun-repgen`, and `rag25-gen` (the rag26 analogue) and `ragtime25` (the
+ragtime26 analogue) are held out for a single TIRA upload each. Since every TIRA
+upload is public and reveals a score, the held-out sets can only be used once
+without turning into a tuning signal. A parameter value is accepted only if its sweep neighbours are within 0.02
 Kendall on all four, so we take a plateau rather than an argmax by a hair. With
 around 10 systems per pilot leaderboard, a Kendall difference below about 0.08 is
 noise, and we do not choose between variants on smaller differences.

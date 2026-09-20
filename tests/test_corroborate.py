@@ -302,6 +302,59 @@ def test_qrels_creation_is_disabled():
     assert judge.create_qrels([], [], llm_config=None) is None
 
 
+# --------------------------------------------------------- contended GPU
+
+
+def test_oom_retry_halves_the_batch_and_succeeds():
+    """A contended GPU must slow the run down, not kill it.
+
+    The first pilot run died to a plain CUDA OOM after another user's job grew to
+    37 of the 47 GiB. Losing a multi-hour run that way is the expensive failure
+    this guards against.
+    """
+    torch = pytest.importorskip("torch")
+    from judges.corroborate.encoders import Encoders
+
+    enc = Encoders("stub", None, device="cpu")
+    calls = []
+
+    def run(chunk):
+        calls.append(len(chunk))
+        if len(chunk) > 4:
+            raise torch.OutOfMemoryError("simulated")
+        return [len(chunk)] * len(chunk)
+
+    out = enc._batched_with_oom_retry(list(range(16)), run, 16, "test")
+    assert len(out) == 16, "every item must still be processed"
+    assert max(calls) == 16 and min(calls) <= 4, calls
+    assert enc.device == "cpu"
+
+
+def test_oom_falls_back_to_cpu_when_batch_size_one_still_fails():
+    """If even one item will not fit, keep going on CPU rather than dying."""
+    torch = pytest.importorskip("torch")
+    from judges.corroborate.encoders import Encoders
+
+    enc = Encoders("stub", None, device="cuda:0")   # not loaded, so never touched
+    state = {"moved": False}
+
+    def run(chunk):
+        if not state["moved"]:
+            raise torch.OutOfMemoryError("simulated, nothing fits")
+        return [0] * len(chunk)
+
+    original = enc._move_to_cpu
+    def spy(why):
+        state["moved"] = True
+        original(why)
+    enc._move_to_cpu = spy
+
+    out = enc._batched_with_oom_retry([1, 2, 3], run, 2, "test")
+    assert len(out) == 3
+    assert enc.device == "cpu"
+    assert state["moved"]
+
+
 # ------------------------------------------------- model cache configuration
 
 
