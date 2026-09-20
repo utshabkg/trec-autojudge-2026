@@ -302,6 +302,56 @@ def test_qrels_creation_is_disabled():
     assert judge.create_qrels([], [], llm_config=None) is None
 
 
+# ------------------------------------------------ batched clustering equivalence
+
+
+@pytest.mark.parametrize("block_size", [1, 2, 3, 7, 512])
+def test_batched_clustering_matches_sequential(block_size):
+    """The block size must not change a single cluster assignment.
+
+    Clustering was rewritten from one matrix-vector product per sentence to one
+    matrix product per block, because the per-sentence version launched a
+    60-thread BLAS region per few milliseconds of arithmetic and made a shared
+    120-core machine unusable. That is a pure performance change and this pins it:
+    every block size, including the degenerate 1 and a size larger than the
+    input, must produce byte-identical clusters and assignments.
+    """
+    enc = StubEncoders()
+    reports = [
+        _report("run_a", "team_a", "t1", [AGREE_1, AGREE_2, UNIQUE]),
+        _report("run_b", "team_b", "t1", [AGREE_2, AGREE_1]),
+        _report("run_c", "team_c", "t1", [UNIQUE, AGREE_1]),
+        _report("run_d", "team_d", "t1", [AGREE_2]),
+    ]
+    ref = build_topic_pool(reports, TOPIC, enc, tau=0.8, block_size=1)
+    got = build_topic_pool(reports, TOPIC, enc, tau=0.8, block_size=block_size)
+
+    assert [c.cluster_id for c in got.clusters] == [c.cluster_id for c in ref.clusters]
+    assert [c.leader for c in got.clusters] == [c.leader for c in ref.clusters]
+    assert [sorted(c.teams) for c in got.clusters] == [sorted(c.teams) for c in ref.clusters]
+    assert [sorted(c.runs) for c in got.clusters] == [sorted(c.runs) for c in ref.clusters]
+    assert [c.size for c in got.clusters] == [c.size for c in ref.clusters]
+    assert got.assignment == ref.assignment
+    assert got.index_of == ref.index_of
+
+
+def test_batched_clustering_equivalence_on_a_larger_synthetic_pool():
+    """Same guarantee where blocks actually straddle newly created leaders."""
+    enc = StubEncoders()
+    # Many short distinct sentences, so new leaders appear constantly and the
+    # intra-block path is exercised heavily rather than incidentally.
+    reports = []
+    for r in range(6):
+        sents = [f"topic sentence number {i} about solar energy costs" for i in range(r, r + 9)]
+        reports.append(_report(f"run_{r}", f"team_{r % 3}", "t1", sents))
+    ref = build_topic_pool(reports, TOPIC, enc, tau=0.8, block_size=1)
+    for bs in (2, 4, 5, 16, 1000):
+        got = build_topic_pool(reports, TOPIC, enc, tau=0.8, block_size=bs)
+        assert got.assignment == ref.assignment, f"block_size={bs}"
+        assert [c.cluster_id for c in got.clusters] == [c.cluster_id for c in ref.clusters]
+        assert [sorted(c.teams) for c in got.clusters] == [sorted(c.teams) for c in ref.clusters]
+
+
 # --------------------------------------------------------- contended GPU
 
 

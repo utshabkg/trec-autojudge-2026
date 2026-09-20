@@ -103,6 +103,34 @@ def _cluster_id(text: str) -> str:
     return hashlib.md5(normalize(text).encode("utf-8")).hexdigest()
 
 
+def _assign(best, run_id, team_id, idx, text, v, leaders, leader_text,
+            teams, runs, sizes, cluster_ids, assignment) -> None:
+    """Place one sentence: join cluster `best`, or start a new one if best < 0.
+
+    Factored out so the batched loop and the reference implementation in the
+    tests share exactly one definition of what assignment means.
+    """
+    if best < 0:
+        n = len(cluster_ids)
+        leaders[n] = v
+        leader_text.append(text)
+        cid = _cluster_id(text)
+        # Distinct sentences can normalise to the same id only if identical,
+        # which dedupe already prevents within a report but not across them.
+        while cid in cluster_ids:
+            cid = hashlib.md5((cid + "+").encode("utf-8")).hexdigest()
+        cluster_ids.append(cid)
+        teams.append({team_id})
+        runs.append({run_id})
+        sizes.append(1)
+        best = n
+    else:
+        teams[best].add(team_id)
+        runs[best].add(run_id)
+        sizes[best] += 1
+    assignment[(run_id, idx)] = cluster_ids[best]
+
+
 def build_topic_pool(
     reports: Sequence,
     topic,
@@ -111,6 +139,7 @@ def build_topic_pool(
     tau: float = 0.82,
     min_sentence_words: int = 5,
     vote_unit: str = "team",
+    block_size: int = 512,
 ) -> TopicPool:
     """Cluster every scoreable sentence of every report for one topic.
 
@@ -163,32 +192,45 @@ def build_topic_pool(
     assignment: Dict[Tuple[str, int], str] = {}
     cluster_ids: List[str] = []
 
-    for (run_id, team_id, idx, text), v in zip(items, vecs):
-        best = -1
-        if n_leaders:
-            sims = leaders[:n_leaders] @ v
-            j = int(np.argmax(sims))
-            if float(sims[j]) >= tau:
-                best = j
-        if best < 0:
-            leaders[n_leaders] = v
-            leader_text.append(text)
-            cid = _cluster_id(text)
-            # Distinct sentences can normalise to the same id only if identical,
-            # which dedupe already prevents within a report but not across them.
-            while cid in cluster_ids:
-                cid = hashlib.md5((cid + "+").encode("utf-8")).hexdigest()
-            cluster_ids.append(cid)
-            teams.append({team_id})
-            runs.append({run_id})
-            sizes.append(1)
-            best = n_leaders
-            n_leaders += 1
-        else:
-            teams[best].add(team_id)
-            runs[best].add(run_id)
-            sizes[best] += 1
-        assignment[(run_id, idx)] = cluster_ids[best]
+    # Similarities are computed one block at a time rather than one sentence at a
+    # time. The naive version issued a separate small matrix-vector product per
+    # sentence, roughly 300k of them per dataset, and each one launched a
+    # 60-thread BLAS parallel region for a few milliseconds of arithmetic. That
+    # cost 15 seconds per topic and drove load average to 123 on a shared
+    # 120-core machine, almost entirely in thread launch rather than computation.
+    #
+    # The result is identical to the sequential version, not merely similar.
+    # Within a block, sentences are still assigned strictly in order, and a
+    # sentence is compared both against the leaders that existed when the block
+    # started (the precomputed rows) and against any leader created earlier in
+    # the same block (the small incremental product). `test_batched_clustering_
+    # matches_sequential` pins that equivalence.
+    block = max(1, int(block_size))
+    for start in range(0, len(items), block):
+        stop = min(start + block, len(items))
+        bvecs = vecs[start:stop]
+        base_n = n_leaders
+        pre = bvecs @ leaders[:base_n].T if base_n else None
+
+        for bi in range(stop - start):
+            run_id, team_id, idx, text = items[start + bi]
+            v = bvecs[bi]
+            best, best_sim = -1, -1.0
+            if base_n:
+                row = pre[bi]
+                j = int(np.argmax(row))
+                if float(row[j]) >= tau:
+                    best, best_sim = j, float(row[j])
+            if n_leaders > base_n:
+                # Leaders created earlier in this block are not in `pre`.
+                extra = leaders[base_n:n_leaders] @ v
+                j = int(np.argmax(extra))
+                if float(extra[j]) >= tau and float(extra[j]) > best_sim:
+                    best, best_sim = base_n + j, float(extra[j])
+            _assign(best, run_id, team_id, idx, text, v, leaders, leader_text,
+                    teams, runs, sizes, cluster_ids, assignment)
+            n_leaders = len(cluster_ids)
+
 
     leader_vecs = leaders[:n_leaders].copy()
     if topic_vec is not None and n_leaders:

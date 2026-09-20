@@ -37,6 +37,41 @@ log = logging.getLogger(__name__)
 _MIN_FREE_VRAM_BYTES = 6 * 1024**3
 
 
+def limit_threads(n: int = 8):
+    """Cap every thread pool we can reach, and return a context for BLAS.
+
+    This is not tuning, it is a correctness-of-citizenship issue on a shared
+    machine. Defaults here are 64 OpenBLAS threads, 60 OpenMP and 60 torch on a
+    120-core box, and the clustering issues very many small matrix products. Each
+    one then launches a 60-plus thread parallel region for a few milliseconds of
+    work, which drove load average to 123 and made the machine unusable for its
+    owner while doing almost no useful computation.
+
+    Returns a context manager, because OpenBLAS reads its environment at import
+    and cannot be reconfigured by setting variables afterwards. threadpoolctl
+    changes it in place for the duration of a block.
+    """
+    n = max(1, int(n))
+    os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+    for var in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+                "NUMEXPR_NUM_THREADS"):
+        os.environ.setdefault(var, str(n))
+    try:
+        import torch
+
+        torch.set_num_threads(n)
+    except Exception:
+        pass
+    try:
+        from threadpoolctl import threadpool_limits
+
+        return threadpool_limits(limits=n)
+    except Exception:
+        from contextlib import nullcontext
+
+        return nullcontext()
+
+
 def pick_device(prefer: Optional[str] = None) -> str:
     """Return 'cuda:N' for the emptiest usable GPU, else 'cpu'.
 

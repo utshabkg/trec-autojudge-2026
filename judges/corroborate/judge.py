@@ -45,7 +45,7 @@ from .attribution import (
     score_inline,
     score_pooled,
 )
-from .encoders import Encoders
+from .encoders import Encoders, limit_threads
 from .measures import CORROBORATE_SPEC, zero_row
 from .pool import TopicPool, build_topic_pool
 from .textutil import normalize
@@ -147,6 +147,8 @@ class CorroborateJudge:
         tau: float,
         min_sentence_words: int,
         vote_unit: str,
+        num_threads: int = 8,
+        block_size: int = 512,
     ) -> Dict[str, TopicPool]:
         sig = (tau, min_sentence_words, vote_unit, len(reports), len(topics))
         if self._pools and self._pool_sig == sig:
@@ -155,16 +157,21 @@ class CorroborateJudge:
         expected = [str(t.request_id) for t in topics]
         grouped = self._by_topic(reports, expected)
         pools: Dict[str, TopicPool] = {}
-        for topic in tqdm(topics, "Pooling topics"):
-            tid = str(topic.request_id)
-            pools[tid] = build_topic_pool(
-                grouped.get(tid, []),
-                topic,
-                encoders,
-                tau=tau,
-                min_sentence_words=min_sentence_words,
-                vote_unit=vote_unit,
-            )
+        # Capped inside the loop, not globally, because this is where the many
+        # matrix products are and where an uncapped BLAS pool made a shared
+        # machine unusable.
+        with limit_threads(num_threads):
+            for topic in tqdm(topics, "Pooling topics"):
+                tid = str(topic.request_id)
+                pools[tid] = build_topic_pool(
+                    grouped.get(tid, []),
+                    topic,
+                    encoders,
+                    tau=tau,
+                    min_sentence_words=min_sentence_words,
+                    vote_unit=vote_unit,
+                    block_size=block_size,
+                )
         self._pools, self._pool_sig = pools, sig
         return pools
 
@@ -193,6 +200,8 @@ class CorroborateJudge:
         min_teams: int = 2,
         max_clusters: int = 40,
         vote_unit: str = "team",
+        num_threads: int = 8,
+        block_size: int = 512,
         **kwargs: Any,
     ) -> Optional[NuggetBanksProtocol]:
         """Mine a nugget bank from the pool of answers.
@@ -214,6 +223,7 @@ class CorroborateJudge:
         pools = self._build_pools(
             rag_responses, rag_topics, encoders,
             tau=tau, min_sentence_words=min_sentence_words, vote_unit=vote_unit,
+            num_threads=num_threads, block_size=block_size,
         )
 
         creator = Creator(
@@ -354,6 +364,8 @@ class CorroborateJudge:
         doc_chunk_chars: int = 1200,
         max_doc_chunks: int = 6,
         on_missing_evals: str = "fix_aggregate",
+        num_threads: int = 8,
+        block_size: int = 512,
         **kwargs: Any,
     ) -> Leaderboard:
         expected = [str(t.request_id) for t in rag_topics]
@@ -373,11 +385,14 @@ class CorroborateJudge:
         pools = self._build_pools(
             rag_responses, rag_topics, encoders,
             tau=tau, min_sentence_words=min_sentence_words, vote_unit=vote_unit,
+            num_threads=num_threads, block_size=block_size,
         )
         mode = detect_mode(list(rag_responses), attribution_mode)
 
         builder = LeaderboardBuilder(CORROBORATE_SPEC)
         n_rows = 0
+        thread_cap = limit_threads(num_threads)
+        thread_cap.__enter__()
         for topic in tqdm(rag_topics, "Judging topics"):
             tid = str(topic.request_id)
             reports = grouped.get(tid, [])
@@ -444,6 +459,7 @@ class CorroborateJudge:
                 builder.add(run_id=run_id, topic_id=tid, values=vals)
                 n_rows += 1
 
+        thread_cap.__exit__(None, None, None)
         leaderboard = builder.build(
             expected_topic_ids=expected, on_missing=on_missing_evals
         )

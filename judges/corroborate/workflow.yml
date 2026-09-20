@@ -44,6 +44,15 @@ settings:
                             # invention, so a LOTO weight can never reach zero
   max_clusters: 40
   vote_unit: "team"         # never "run": 83 runs come from only 25 teams
+  # Thread cap. Uncapped, OpenBLAS takes 64 threads and torch 60 on this
+  # 120-core box, and the clustering issues very many small matrix products, so
+  # nearly all the time went into launching parallel regions. Load average hit
+  # 123 and the machine became unusable for its owner.
+  num_threads: 8
+  # Clustering block size. Similarities are computed one block at a time rather
+  # than one sentence at a time. Provably identical output, see
+  # test_batched_clustering_matches_sequential.
+  block_size: 512
 
 nugget_settings: {}
 
