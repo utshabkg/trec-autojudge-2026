@@ -14,7 +14,13 @@ out*/
 output/
 results/
 *.zip
+# Fetched evaluation data. Both forms on purpose: a real directory, and the
+# symlink we use to keep the bulk data on the 20TB volume. The trailing-slash
+# form does not match a symlink, so without the second line git would try to
+# commit a machine-specific absolute path into the code submission.
 /local-data/
+/local-data
+/local-data-dev
 local-data-dev/
 metaeval/
 models/
