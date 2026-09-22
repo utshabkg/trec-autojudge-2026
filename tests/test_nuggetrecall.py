@@ -18,6 +18,43 @@ from judges.nuggetrecall.prompts import (
     Nugget, parse_judgments, parse_nuggets, score, strip_reasoning,
 )
 
+
+# _run imports minima_llm lazily. Use the real package when it is installed, so
+# the request objects keep the real signature, and a minimal stand-in otherwise,
+# so the suite still runs on a machine without an LLM backend.
+try:  # pragma: no cover - depends on the environment
+    import minima_llm as _MOD
+except ImportError:  # pragma: no cover
+    import sys
+    import types
+    from dataclasses import dataclass, field
+
+    _MOD = types.ModuleType("minima_llm")
+
+    @dataclass
+    class _Req:
+        request_id: str
+        messages: list = field(default_factory=list)
+        temperature: float = 0.0
+        max_tokens: int = 0
+
+    @dataclass
+    class _Resp:
+        request_id: str
+        text: str
+
+    _MOD.MinimaLlmRequest, _MOD.MinimaLlmResponse = _Req, _Resp
+    sys.modules["minima_llm"] = _MOD
+
+
+class _NoSleep:
+    """Stands in for the time module so batch backoff does not slow the suite."""
+
+    @staticmethod
+    def sleep(_seconds):
+        return None
+
+
 TOPIC = Request(request_id="t1", title="how do bees make honey")
 KEY = ("1. [VITAL] Bees collect nectar from flowers.\n"
        "2. [VITAL] Bees add enzymes to nectar.\n"
@@ -156,6 +193,49 @@ def test_a_retry_sends_a_different_prompt(monkeypatch):
     assert judge_prompts[0] != judge_prompts[1]
     row = next(e.values for e in lb.entries if e.run_id == "r1" and e.topic_id == "t1")
     assert row["NR_VITAL"] == pytest.approx(0.75), "the retry's good reply must be used"
+
+
+class _ThrowingBackend:
+    """Raises for the whole batch the first n times, then answers everything."""
+
+    def __init__(self, throws):
+        self.throws, self.seen = throws, []
+
+    async def run_batched(self, reqs):
+        self.seen.append([tuple(m["content"] for m in r.messages) for r in reqs])
+        if self.throws > 0:
+            self.throws -= 1
+            raise RuntimeError("Event loop is closed")
+        return [_MOD.MinimaLlmResponse(request_id=r.request_id, text="ok") for r in reqs]
+
+
+def _jobs(n=3):
+    return [(f"judge:r{i}:t1:0", [{"role": "user", "content": f"q{i}"}]) for i in range(n)]
+
+
+def test_a_thrown_batch_is_resent_unchanged(monkeypatch):
+    """Regression guard for the whole-batch throw seen on gpt-oss-20b.
+
+    run_batched can raise for the entire batch rather than per item. Losing
+    thousands of judgments to one transport error would score them all zero, so
+    _run resends. The resend must use the *identical* prompts, because that is
+    what lets the cache replay whatever already succeeded. This is the opposite
+    of the prompt retries above, which must change the prompt.
+    """
+    monkeypatch.setattr(J, "time", _NoSleep)
+    b = _ThrowingBackend(throws=1)
+    out = J._run(b, _jobs(), max_tokens=64, temperature=0.0)
+    assert len(b.seen) == 2, "the batch must be resent once"
+    assert b.seen[0] == b.seen[1], "the resend must not change the prompts"
+    assert all(v == "ok" for v in out.values())
+
+
+def test_a_batch_that_keeps_throwing_scores_zero_rather_than_crashing(monkeypatch):
+    monkeypatch.setattr(J, "time", _NoSleep)
+    b = _ThrowingBackend(throws=99)
+    out = J._run(b, _jobs(), max_tokens=64, temperature=0.0)
+    assert len(b.seen) == J._BATCH_RETRIES + 1
+    assert set(out) == {rid for rid, _ in _jobs()} and all(v is None for v in out.values())
 
 
 def test_unparsable_after_all_retries_scores_zero_not_dropped(monkeypatch):

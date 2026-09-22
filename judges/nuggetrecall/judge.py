@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Type
 
@@ -68,6 +69,12 @@ _RETRY_SUFFIX = (
     "\n\nReminder: follow the output format exactly, with no other text.",
     "\n\nImportant: output only the numbered lines, exactly as specified, nothing else.",
 )
+
+# Batch-level retries, which are not the same thing as the prompt retries above.
+# These re-send the identical batch after a transport-level throw, so the cache
+# replays everything that already succeeded.
+_BATCH_RETRIES = 2
+_BATCH_BACKOFF_S = 5.0
 
 
 # Where an unconfigured judge points. Port 9 is the discard service and is closed
@@ -163,11 +170,19 @@ def _llm_backend(llm_config):
 
 
 def _run(backend, jobs: List[Tuple[str, List[Dict[str, str]]]], *, max_tokens: int,
-         temperature: float) -> Dict[str, Optional[str]]:
+         temperature: float, batch_retries: int = _BATCH_RETRIES) -> Dict[str, Optional[str]]:
     """Send a batch. Returns request_id -> reply text, or None on failure.
 
     Failures are counted and logged by type only. A failure message from the
     endpoint can echo the prompt, which holds restricted report text.
+
+    run_batched can raise for the whole batch rather than per item, which we have
+    seen once on gpt-oss-20b at the start of the judge phase. That must not lose
+    thousands of answers at once, so a batch-level exception is retried with the
+    *same* requests: identical prompts hit the cache, so whatever already
+    succeeded replays for free and only the rest is re-sent. This is why the
+    retry lives here and not in the caller, whose retries deliberately change the
+    prompt to defeat the cache.
     """
     from minima_llm import MinimaLlmRequest, MinimaLlmResponse
 
@@ -177,11 +192,18 @@ def _run(backend, jobs: List[Tuple[str, List[Dict[str, str]]]], *, max_tokens: i
         return {rid: None for rid, _ in jobs}
     reqs = [MinimaLlmRequest(request_id=rid, messages=msgs, temperature=temperature,
                              max_tokens=max_tokens) for rid, msgs in jobs]
-    try:
-        results = asyncio.run(backend.run_batched(reqs))
-    except Exception as exc:
-        log.warning("LLM batch failed entirely (%s), scoring affected items as unjudged",
-                    type(exc).__name__)
+    results = None
+    for attempt in range(batch_retries + 1):
+        try:
+            results = asyncio.run(backend.run_batched(reqs))
+            break
+        except Exception as exc:
+            log.warning("LLM batch raised %s (attempt %d of %d)",
+                        type(exc).__name__, attempt + 1, batch_retries + 1)
+            if attempt < batch_retries:
+                time.sleep(_BATCH_BACKOFF_S * (attempt + 1))
+    if results is None:
+        log.warning("LLM batch failed entirely, scoring %d items as unjudged", len(jobs))
         return {rid: None for rid, _ in jobs}
     out: Dict[str, Optional[str]] = {}
     failed = 0
