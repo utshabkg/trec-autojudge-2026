@@ -108,10 +108,11 @@ NuggetRecall wins on both, so it is our main submission.
 
 - **Data submission:** NuggetRecall on rag26 and ragtime26, complete for every run and
   topic. Scores on the test sets come out after TREC.
-- **Code submission, rehearsed end to end **[done]**:** both judges build as containers
-  and pass every TIRA check on a dry run, including the one that matters for an LLM
-  judge. TIRA re-runs the container with the endpoint removed and confirms the cached
-  prompts alone reproduce the same leaderboard.
+- **Code submission, rehearsed **[done]**:** both judges build as containers and pass
+  every TIRA check on a dry run. We had to fix the rehearsal itself first: it gave
+  the container no LLM to call, so the judge fell back, produced an all-zero
+  leaderboard, and every check still passed. The container now calls a stub endpoint
+  and the job fails if the leaderboard does not separate systems.
 - **[pending]** the real code submissions, and Corroborate as a second data submission.
 
 ---
@@ -151,6 +152,25 @@ NuggetRecall wins on both, so it is our main submission.
    every upload, which refuses any leaderboard whose measures do not vary between
    systems. Anyone building an LLM judge should have that check and should not trust
    a low score to mean a weak judge.
+
+6. **Reproducibility checks can be satisfied by two runs that both do nothing.** TIRA
+   proves an LLM judge is reproducible by re-running the container with the endpoint
+   removed and confirming the cached prompts give the same leaderboard. Our first
+   rehearsal passed that check while making zero LLM calls: the first run cached
+   nothing, so the replay reproduced nothing, and the two agreed exactly. A sameness
+   check needs a liveness check beside it. Ours is now that the container's own
+   output must rank systems apart before the job can pass.
+
+7. **The same silent shape keeps coming back, so we went looking for it.** After two
+   of these in one day we audited both judges specifically for failure modes that
+   yield a plausible-looking but meaningless leaderboard. That found a third, and the
+   worst: the judge configures its LLM client once per phase in one process, using
+   settings that stick. A single missed connection while the model server was still
+   loading pinned a five-second timeout onto the whole judging phase. Because the
+   calls that exceed five seconds are the long answers, the zeros land unevenly, the
+   measures still vary, and the constancy check cannot see it. That one would have
+   ranked systems partly by brevity, and answer length correlates +0.558 with human
+   truth on ragtime25, so the submitted score could have gone negative.
 
 ---
 

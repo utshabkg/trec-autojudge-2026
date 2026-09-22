@@ -864,18 +864,33 @@ team can gain from its own runs.
 - Scored NuggetRecall on the organizers' smaller model, `Qwen/Qwen2.5-7B-Instruct`:
   0.654 max Kendall on rag25-gen, rank 65 of 93, against 0.788 and rank 45 for
   Qwen3-30B. The judge works on the small model but gives up about 0.13 Kendall.
-- **NuggetRecall's code submission is proven.** The first attempt stalled for 50
-  minutes and was killed. The cause was minima-llm's `MAX_ATTEMPTS`, whose default
+- **NuggetRecall's code submission builds and boots.** The first attempt stalled for
+  50 minutes and was killed. The cause was minima-llm's `MAX_ATTEMPTS`, whose default
   is 50 rather than the 6 we assumed, and our own fast-fail path, which only
   triggered when the endpoint variable was unset. CI sets a placeholder, so it
   never triggered. Added an endpoint preflight that opens a socket once and, if
   nothing answers, caps attempts and timeouts before any call is made. The dry run
-  then finished in 11 minutes with every TIRA check green, including the two that
-  matter most for a cached LLM judge: the image produced valid outputs, and the
-  cache directory mounted through `CACHE_DIR` was both used and sufficient to
-  re-execute the software to the same results with the endpoint removed. That is
-  the reproducibility proof a code submission is graded on, and it confirms the
-  cache key really does exclude the endpoint URL.
+  then finished in 11 minutes with every TIRA check green.
+
+  **Correction, same day.** We first read that green run as proof the judge works in
+  the container. It was not, and the mistake is worth recording because it is the
+  same shape as the gpt-oss zero. The endpoint in CI was a closed port, so inside
+  the container every call failed, the judge fell back, and the pre-upload test
+  wrote an all-zero leaderboard. TIRA accepted it, because its format check only
+  looks at the shape of the file and never asks whether a measure varies between
+  systems. The deterministic-cache check passed too, for the worst possible reason:
+  the first run cached nothing, so the replay reproduced that nothing exactly. Two
+  runs that both did nothing agree perfectly. So the rehearsal proved the image
+  builds, boots and emits a well-formed file, and proved nothing about judging.
+
+  Fixed by giving the container something real to call. A stub OpenAI endpoint now
+  runs on the runner, the container reaches it over the docker bridge with
+  `--allow-network`, and a new step runs `check_upload_dir.py` over the container's
+  own output so a degenerate leaderboard fails the job. A unit test pins the stub's
+  replies to the real parsers, so a prompt change cannot quietly put us back in the
+  all-zero case. The general lesson: **a reproducibility check compares two runs, so
+  it is satisfied by two runs that both fail identically.** It needs a liveness
+  check beside it.
 - Fixed a failure mode the gpt-oss-20b run exposed. `run_batched` can raise for a
   whole batch rather than per item, and it did so on the first call of the judge
   phase, taking all 5302 judgments with it. The caller then retried under a changed
