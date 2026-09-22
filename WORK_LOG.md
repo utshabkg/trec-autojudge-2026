@@ -292,7 +292,7 @@ Both releases fetched on 2026-09-19, 1.54 GiB compressed and 4.8 GiB extracted,
 stored on the large volume and symlinked as `local-data`.
 
 Counts match the announced figures exactly: rag26 **83 generation runs, 25 teams,
-119 topics, 9,877 reports**; ragtime26 **49 repgen runs, 10 teams, 103 topics,
+119 topics, 9,877 reports**, and ragtime26 **49 repgen runs, 10 teams, 103 topics,
 5,047 reports**.
 
 **Task zero is resolved: documents are inline in both.** rag26 99.1% of reports,
