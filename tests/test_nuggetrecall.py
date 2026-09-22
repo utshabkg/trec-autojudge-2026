@@ -188,3 +188,26 @@ def test_a_topic_with_no_usable_key_falls_back_rather_than_crashing(monkeypatch)
 
 def test_qrels_creation_is_disabled():
     assert J.NuggetRecallJudge().create_qrels() is None
+
+
+# ------------------------------------------------- no endpoint configured
+
+
+def test_completes_with_no_endpoint_configured(monkeypatch, tmp_path):
+    """The code-submission dry run forwards no endpoint at all.
+
+    MinimaLlmConfig.from_env() raises when OPENAI_BASE_URL is unset, so without
+    handling the judge would crash, write no leaderboard, and fail the submission.
+    It must instead complete, with every (run, topic) present.
+    """
+    for var in ("OPENAI_BASE_URL", "OPENAI_API_BASE", "OPENAI_MODEL", "LLM_MODEL",
+                "MAX_ATTEMPTS", "TIMEOUT_S"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("CACHE_DIR", str(tmp_path / "cache"))
+    reports = [_report("r1", "a", ["Bees collect nectar."]), _report("r2", "b", ["Bees make honey."])]
+    j = J.NuggetRecallJudge()
+    banks = j.create_nuggets(None, [TOPIC], llm_config=None)
+    lb = j.judge(reports, [TOPIC], llm_config=None, nugget_banks=banks)
+    runs = {e.run_id for e in lb.entries if e.topic_id == "t1"}
+    assert runs == {"r1", "r2"}
+    assert len(banks.banks["t1"].claim_bank) >= 1, "bank must not be empty"

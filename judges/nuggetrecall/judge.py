@@ -70,18 +70,53 @@ _RETRY_SUFFIX = (
 )
 
 
+# Where an unconfigured judge points. Port 9 is the discard service and is closed
+# on any normal host, so a call fails in milliseconds instead of hanging.
+_NO_ENDPOINT = "http://127.0.0.1:9/v1"
+
+
 def _llm_backend(llm_config):
-    """Build the minima-llm backend from the environment contract.
+    """Build the minima-llm backend from the environment contract, never raising.
 
     llm_config.raw is always empty under the framework's environment-only
     configuration, so from_env() is the path that actually runs, exactly as in the
     starter kit's reference LLM judge.
+
+    from_env() raises RuntimeError when OPENAI_BASE_URL or OPENAI_MODEL is unset.
+    That happens in the code-submission dry run, where no endpoint is forwarded,
+    and a crash there means no leaderboard and a failed submission. The
+    organizers' guidance is explicit that a judge must warn rather than raise,
+    because TIRA's deterministic replay runs it with no working endpoint and must
+    still complete from the prompt cache.
+
+    So a missing endpoint is replaced with a closed local port. The backend is still
+    built, which matters: prompt-cache hits are served without touching the
+    endpoint, so a judge with a warm cache completes normally, and only cache misses
+    fail, fast, and fall back.
     """
+    import os
+
     from minima_llm import MinimaLlmConfig, OpenAIMinimaLlm
 
     raw = getattr(llm_config, "raw", None) if llm_config else None
-    cfg = MinimaLlmConfig.from_dict(raw) if raw else MinimaLlmConfig.from_env()
-    return OpenAIMinimaLlm(cfg)
+    if raw:
+        return OpenAIMinimaLlm(MinimaLlmConfig.from_dict(raw))
+    if not os.environ.get("OPENAI_BASE_URL") and not os.environ.get("OPENAI_API_BASE"):
+        log.warning("no LLM endpoint configured (OPENAI_BASE_URL unset). Cached "
+                    "judgments are still used, and anything not in the cache falls "
+                    "back and scores zero")
+        os.environ["OPENAI_BASE_URL"] = _NO_ENDPOINT
+        # Fail fast against the closed port rather than retrying with backoff.
+        os.environ.setdefault("MAX_ATTEMPTS", "1")
+        os.environ.setdefault("TIMEOUT_S", "5")
+    if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
+        os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
+    try:
+        return OpenAIMinimaLlm(MinimaLlmConfig.from_env())
+    except Exception as exc:
+        log.warning("could not build the LLM backend (%s); every call falls back",
+                    type(exc).__name__)
+        return None
 
 
 def _run(backend, jobs: List[Tuple[str, List[Dict[str, str]]]], *, max_tokens: int,
@@ -95,6 +130,8 @@ def _run(backend, jobs: List[Tuple[str, List[Dict[str, str]]]], *, max_tokens: i
 
     if not jobs:
         return {}
+    if backend is None:
+        return {rid: None for rid, _ in jobs}
     reqs = [MinimaLlmRequest(request_id=rid, messages=msgs, temperature=temperature,
                              max_tokens=max_tokens) for rid, msgs in jobs]
     try:
