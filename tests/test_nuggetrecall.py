@@ -319,6 +319,42 @@ def test_a_set_but_dead_endpoint_fails_fast(monkeypatch, tmp_path):
     assert elapsed < 60, f"took {elapsed:.0f}s: the dead endpoint was retried, not failed fast"
 
 
+def test_a_live_endpoint_gets_the_reasoning_model_defaults(monkeypatch):
+    """Regression: the stock batch defaults cost us a whole run.
+
+    gpt-oss-20b on rag25-gen scored 0.000 and ranked last, because minima-llm
+    times a call out after 60 s and aborts the entire batch after 25 failures.
+    On 5302 judgments that is half a percent of the calls destroying all of them.
+    A reasoning model needs the longer timeout, and a judge that already scores a
+    failed call as zero and counts it must not have the batch pulled from under
+    it. None of these touches a cache key, so TIRA's replay check is unaffected.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Ok(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200); self.end_headers()
+        def log_message(self, *a):
+            pass
+
+    for var in ("TIMEOUT_S", "MAX_ATTEMPTS", "BATCH_MAX_FAILURES"):
+        monkeypatch.delenv(var, raising=False)
+    srv = HTTPServer(("127.0.0.1", 0), Ok)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setenv("OPENAI_BASE_URL", f"http://127.0.0.1:{srv.server_port}/v1")
+        monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-20b")
+        monkeypatch.setenv("OPENAI_API_KEY", "EMPTY")
+        J._llm_backend(None)
+    finally:
+        srv.shutdown()
+    import os
+    assert float(os.environ["TIMEOUT_S"]) >= 600, "a reasoning model needs more than 60 s"
+    assert os.environ["BATCH_MAX_FAILURES"] == "none", "a few failures must not abort the batch"
+    assert int(os.environ["MAX_ATTEMPTS"]) <= 6
+
+
 def test_preflight_treats_any_http_reply_as_reachable():
     """A 401 or 404 still proves a server is there, so it must not trigger fast-fail."""
     import threading

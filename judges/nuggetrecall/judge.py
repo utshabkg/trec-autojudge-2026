@@ -159,6 +159,29 @@ def _llm_backend(llm_config):
         os.environ.setdefault("TIMEOUT_S", "5")
         os.environ.setdefault("COOLDOWN_CAP_S", "0")
         os.environ.setdefault("MAX_BACKOFF_S", "0")
+    else:
+        # Defaults tuned for a reasoning model behind a local server, which is
+        # what the organizers run submitted code against. Measured, not guessed:
+        # gpt-oss-20b on rag25-gen scored 0.000 and ranked last under the stock
+        # defaults, with all 5302 judgments lost.
+        #
+        # TIMEOUT_S is 60 s by default. A reasoning model with a 4096-token reply
+        # budget, behind 32 outstanding requests, does not answer a long judge
+        # prompt in 60 s, so calls time out that would have succeeded.
+        #
+        # BATCH_MAX_FAILURES is 25 by default, and it aborts the *whole* batch,
+        # not the failing calls. On 5302 judgments that is a 0.5% failure rate
+        # taking down 100% of the work. We already handle a failed call properly:
+        # it is retried, then scored zero, and both are counted in the log. A
+        # whole-batch abort is strictly worse than that, so the breaker is turned
+        # off and our own accounting is what reports trouble.
+        #
+        # These change no cache key, which is (model, messages, temperature,
+        # max_tokens), so TIRA's replay-from-cache check is unaffected. Each is a
+        # setdefault, so an operator can still override any of them.
+        os.environ.setdefault("TIMEOUT_S", "900")
+        os.environ.setdefault("MAX_ATTEMPTS", "4")
+        os.environ.setdefault("BATCH_MAX_FAILURES", "none")
     if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
         os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
     try:
