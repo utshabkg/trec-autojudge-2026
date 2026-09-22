@@ -1,0 +1,53 @@
+# NuggetRecall: query-derived nugget recall, judged by an LLM.
+#
+# The complement to judges/corroborate, built because Corroborate ranks near the
+# bottom on short RAG answers (rag25-gen) while the strongest public judges there
+# derive nuggets from the question. See WORK_LOG.md section 5.
+judge_class: "judges.nuggetrecall.judge:NuggetRecallJudge"
+
+# ---------------------------------------------------------------- lifecycle
+create_nuggets: true
+create_qrels: false               # MUST stay false, see judges/corroborate/workflow.yml
+judge: true
+
+# false, deliberately: create_nuggets() then receives no responses at all, so the
+# answer key is guaranteed to come from the request alone. That keeps the key
+# independent of what any system said, and it keeps the bank readable under the
+# data policy for every topic, test sets included.
+nugget_depends_on_responses: false
+judge_uses_nuggets: true
+judge_uses_qrels: false
+qrels_uses_nuggets: false
+
+force_recreate_nuggets: false     # resume: reuse <filebase>.nuggets.jsonl if present
+augment_report: false
+
+# ----------------------------------------------------------------- settings
+settings:
+  filebase: "{_name}"
+  temperature: 0.0
+  retries: 2
+
+nugget_settings:
+  min_nuggets: 8
+  max_nuggets: 20
+  max_tokens_generate: 1536
+
+judge_settings:
+  max_tokens_judge: 1024
+  # Caps pathological reports. rag26 is limited to 1024 words, roughly 7,000
+  # characters, so this only ever bites on ragtime-style long reports.
+  max_answer_chars: 40000
+  on_missing_evals: "fix_aggregate"
+
+variants:
+  best: {}
+  # A smaller answer key. Fewer, higher-level facts are easier to match but
+  # discriminate less between systems.
+  small-key:
+    nugget_settings:
+      min_nuggets: 5
+      max_nuggets: 10
+
+# This judge calls an LLM, so the endpoint-contract test must see it do so.
+uses_llm: true

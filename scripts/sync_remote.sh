@@ -25,6 +25,10 @@ CODE_EXCLUDES=(
     --exclude 'output*/' --exclude cache/ --exclude .hf/
     --exclude metaeval/ --exclude models/
     --exclude __pycache__/ --exclude '*.egg-info/' --exclude .pytest_cache/
+    # Logs are written on the node by running jobs and by the vLLM server. Without
+    # this, the code push's --delete removed them, because they do not exist here:
+    # the first casualty was vllm.log, deleted from under a live server.
+    --exclude '*.log'
 )
 
 case "${1:-}" in
