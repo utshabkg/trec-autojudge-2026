@@ -85,14 +85,38 @@ def fuse(left: Dict[str, Dict[str, float]], right: Dict[str, Dict[str, float]],
     topics = sorted(set(left) & set(right))
     if not topics:
         raise SystemExit("the two leaderboards share no topics")
+    # Only judges that actually carry weight get a say in which runs survive.
+    # At weight 1.0 this is the pure right-hand judge re-aggregated by rank, which
+    # is the control that separates "fusion helped" from "rank aggregation
+    # helped", and it must not lose runs to a judge contributing nothing.
+    sides = []
+    if weight < 1.0:
+        sides.append(left)
+    if weight > 0.0:
+        sides.append(right)
+
+    # Every run a contributing judge scored on any topic. Not the intersection:
+    # dropping a run makes the leaderboard incomplete, which TIRA rejects outright
+    # ("The all entry for run X is missing") and which check_upload_dir cannot
+    # see, because it only inspects what is present. A run absent on a topic
+    # scores 0.0 there, which is the framework's own fix_aggregate convention and
+    # is why this fuses percentiles rather than z-scores: for a percentile 0.0
+    # correctly means "worst", where for a z-score it would wrongly mean "average".
+    runs = sorted(set().union(*[set(s[t]) for s in sides for t in topics]))
+
     per_topic: Dict[str, Dict[str, float]] = {}
+    filled = 0
     for t in topics:
         lp, rp = percentiles(left[t]), percentiles(right[t])
-        runs = set(lp) & set(rp)
-        # A run missing from one judge would otherwise be scored on half the
-        # evidence and silently look worse, so it is dropped from both.
-        per_topic[t] = {r: (1.0 - weight) * lp[r] + weight * rp[r] for r in runs}
-    runs = sorted(set.intersection(*(set(v) for v in per_topic.values())))
+        per_topic[t] = {}
+        for r in runs:
+            if not all(r in s[t] for s in sides):
+                filled += 1
+            per_topic[t][r] = (1.0 - weight) * lp.get(r, 0.0) + weight * rp.get(r, 0.0)
+    if filled:
+        print(f"  note: {filled} of {len(runs) * len(topics)} cells were absent from "
+              f"a contributing judge and scored 0.0, as fix_aggregate would")
+
     agg = {r: sum(per_topic[t][r] for t in topics) / len(topics) for r in runs}
     return per_topic, agg
 
