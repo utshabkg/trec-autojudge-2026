@@ -119,7 +119,28 @@ jobs:
             # kiddie is small and ships in the repo, so the local test is quick.
             EXTRA=(--dry-run --dataset kiddie-20260605-training)
           fi
-          tira-cli code-submission "${EXTRA[@]}" \
+          # An LLM judge needs two more things, and the first is not optional.
+          #
+          # --forward-environment-variable registers the variable NAMES the judge
+          # needs. The howto is explicit that a submission made without it "can
+          # never receive an LLM endpoint", and that the only fix is to resubmit.
+          # Without it the organizers could not inject their model, and the judge
+          # would run on TIRA with no LLM and write an all-zero leaderboard,
+          # silently. No values are sent, only the names.
+          #
+          # --cache-behaviour deterministic with an empty mounted cache makes TIRA
+          # re-execute from the cache with the endpoint disabled and check the
+          # output is identical, which is the reproducibility proof for LLM judges.
+          #
+          # Corroborate declares uses_llm: false and makes no LLM calls, so it
+          # needs neither.
+          LLM=()
+          if grep -qE "^uses_llm:[[:space:]]*true" "judges/${{ inputs.judge }}/workflow.yml"; then
+            LLM=(--forward-environment-variable OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL
+                 --cache-behaviour deterministic --mount-cache '$CACHE_DIR=EMPTY_DIR')
+            echo "LLM judge: forwarding the OPENAI_* names and using the deterministic cache"
+          fi
+          tira-cli code-submission "${EXTRA[@]}" "${LLM[@]}" \
             --path . \
             --task trec-auto-judge \
             --command 'auto-judge run --workflow /auto-judge/judges/${{ inputs.judge }}/workflow.yml --variant ${{ inputs.variant }} --rag-responses $inputDataset/runs/*/ --rag-topics $inputDataset/topics/*.jsonl --out-dir $outputDir'
