@@ -211,3 +211,50 @@ def test_completes_with_no_endpoint_configured(monkeypatch, tmp_path):
     runs = {e.run_id for e in lb.entries if e.topic_id == "t1"}
     assert runs == {"r1", "r2"}
     assert len(banks.banks["t1"].claim_bank) >= 1, "bank must not be empty"
+
+
+def test_a_set_but_dead_endpoint_fails_fast(monkeypatch, tmp_path):
+    """Regression: a placeholder endpoint used to stall the judge for over an hour.
+
+    The CI dry run sets OPENAI_BASE_URL to a closed port. minima-llm retries each
+    failed call up to 50 times with backoff, and the fast-fail path used to apply
+    only when the variable was unset, so the dry run sat in the submission step for
+    more than 50 minutes. With the preflight, an endpoint that does not answer is
+    detected up front and the run completes in seconds.
+    """
+    import time
+    for var in ("MAX_ATTEMPTS", "TIMEOUT_S", "COOLDOWN_CAP_S", "MAX_BACKOFF_S"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+    monkeypatch.setenv("OPENAI_MODEL", "Qwen/Qwen2.5-7B-Instruct")
+    monkeypatch.setenv("OPENAI_API_KEY", "EMPTY")
+    monkeypatch.setenv("CACHE_DIR", str(tmp_path / "cache"))
+    reports = [_report("r1", "a", ["Bees collect nectar."]), _report("r2", "b", ["Bees make honey."])]
+    j = J.NuggetRecallJudge()
+    start = time.monotonic()
+    banks = j.create_nuggets(None, [TOPIC], llm_config=None)
+    lb = j.judge(reports, [TOPIC], llm_config=None, nugget_banks=banks)
+    elapsed = time.monotonic() - start
+    assert {e.run_id for e in lb.entries if e.topic_id == "t1"} == {"r1", "r2"}
+    assert elapsed < 60, f"took {elapsed:.0f}s: the dead endpoint was retried, not failed fast"
+
+
+def test_preflight_treats_any_http_reply_as_reachable():
+    """A 401 or 404 still proves a server is there, so it must not trigger fast-fail."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class NotFound(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(404); self.end_headers()
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), NotFound)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        assert J._endpoint_reachable(f"http://127.0.0.1:{srv.server_port}/v1", None)
+    finally:
+        srv.shutdown()
+    assert not J._endpoint_reachable("http://127.0.0.1:9/v1", None, attempts=1, timeout=1)
+    assert not J._endpoint_reachable("EMPTY", None, attempts=1, timeout=1)

@@ -75,6 +75,34 @@ _RETRY_SUFFIX = (
 _NO_ENDPOINT = "http://127.0.0.1:9/v1"
 
 
+def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int = 3,
+                        timeout: float = 5.0) -> bool:
+    """Preflight: does anything answer at this endpoint?
+
+    Any HTTP response counts as reachable, including 401 or 404, because it proves a
+    server is there. Only a connection failure, a timeout or an unusable URL (TIRA's
+    replay sets OPENAI_BASE_URL to the literal string EMPTY) counts as unreachable.
+    Retried briefly so a server that is still warming up is not written off.
+    """
+    import time
+    import urllib.error
+    import urllib.request
+
+    url = (base_url or "").rstrip("/") + "/models"
+    for i in range(attempts):
+        try:
+            req = urllib.request.Request(
+                url, headers={"Authorization": f"Bearer {api_key or 'EMPTY'}"})
+            urllib.request.urlopen(req, timeout=timeout).close()
+            return True
+        except urllib.error.HTTPError:
+            return True
+        except Exception:
+            if i < attempts - 1:
+                time.sleep(2)
+    return False
+
+
 def _llm_backend(llm_config):
     """Build the minima-llm backend from the environment contract, never raising.
 
@@ -102,13 +130,28 @@ def _llm_backend(llm_config):
     if raw:
         return OpenAIMinimaLlm(MinimaLlmConfig.from_dict(raw))
     if not os.environ.get("OPENAI_BASE_URL") and not os.environ.get("OPENAI_API_BASE"):
-        log.warning("no LLM endpoint configured (OPENAI_BASE_URL unset). Cached "
-                    "judgments are still used, and anything not in the cache falls "
-                    "back and scores zero")
+        log.warning("no LLM endpoint configured (OPENAI_BASE_URL unset)")
         os.environ["OPENAI_BASE_URL"] = _NO_ENDPOINT
-        # Fail fast against the closed port rather than retrying with backoff.
+
+    # Preflight, and fail fast only when nothing answers.
+    #
+    # minima-llm retries a failed call up to 50 times by default, with backoff up
+    # to 20 s and a cooldown up to 60 s. That is the right behaviour against a live
+    # server that hiccups, and a disaster against one that is not there: the first
+    # NuggetRecall dry run sat in the submission step for over 50 minutes, because
+    # CI set OPENAI_BASE_URL to a closed port and the fast-fail below used to apply
+    # only when the variable was unset. It is now decided by whether anything
+    # answers, so it covers an unset endpoint, a placeholder, TIRA's replay value
+    # EMPTY, and a real endpoint that is down, and it never throttles a live one.
+    # Cache hits are still served in every case, since they need no network.
+    base = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or ""
+    if not _endpoint_reachable(base, os.environ.get("OPENAI_API_KEY")):
+        log.warning("LLM endpoint is not reachable. Cached judgments are still used, "
+                    "and anything not in the cache fails fast, falls back and scores zero")
         os.environ.setdefault("MAX_ATTEMPTS", "1")
         os.environ.setdefault("TIMEOUT_S", "5")
+        os.environ.setdefault("COOLDOWN_CAP_S", "0")
+        os.environ.setdefault("MAX_BACKOFF_S", "0")
     if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
         os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
     try:
