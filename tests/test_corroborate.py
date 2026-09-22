@@ -539,3 +539,40 @@ def test_real_models_end_to_end_on_kiddie():
     assert runs == {"run1", "run2", "run3", "run4"}
     agg = {e.run_id: e.values for e in lb.entries if e.topic_id == lb.all_topic_id}
     assert len({round(agg[r]["NCOV"], 9) for r in runs}) > 1, "NCOV must separate runs"
+
+
+def test_an_inert_specificity_gate_is_reported(caplog):
+    """Regression: the gate silently kept 100% of clusters for all of development.
+
+    specificity is a raw cosine against the topic, and BGE never scores near zero,
+    so a floor of 0.15 rejected nothing on any dataset. The sweep meant to validate
+    it could not tell, because all four swept values produced identical banks. A
+    threshold on a cosine is meaningless without the encoder's scale, so the guard
+    is to say when the gate is not gating.
+    """
+    import logging
+    from judges.corroborate import pool as P
+
+    clusters = [
+        P.Cluster(cluster_id=f"c{i}", leader=f"s{i}", teams=frozenset({"a", "b"}),
+                  runs=frozenset({"r"}), specificity=0.30 + 0.04 * i, size=2)
+        for i in range(10)
+    ]
+    P._GATE_REPORTED.clear()
+    with caplog.at_level(logging.WARNING, logger=P.log.name):
+        P._warn_if_gate_is_inert(clusters, 0.15)
+    assert "not gating" in " ".join(r.getMessage() for r in caplog.records)
+
+    # A floor inside the distribution is doing its job, so it must stay quiet.
+    caplog.clear()
+    P._GATE_REPORTED.clear()
+    with caplog.at_level(logging.WARNING, logger=P.log.name):
+        P._warn_if_gate_is_inert(clusters, 0.50)
+    assert not caplog.records
+
+    # A negative floor is how the tests disable the gate deliberately.
+    caplog.clear()
+    P._GATE_REPORTED.clear()
+    with caplog.at_level(logging.WARNING, logger=P.log.name):
+        P._warn_if_gate_is_inert(clusters, -1.0)
+    assert not caplog.records

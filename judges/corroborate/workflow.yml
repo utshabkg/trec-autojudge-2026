@@ -39,7 +39,14 @@ settings:
   # because BGE similarity for genuine paraphrases sits around 0.83. Calibrated
   # properly on the pilot datasets via the tau-sweep below.
   tau: 0.80
-  specificity_floor: 0.15
+  # Measured against the shipped encoder, not guessed. cos(sentence, topic) under
+  # BAAI/bge-base-en-v1.5 runs 0.587-0.753 for specific facts, 0.361-0.472 for
+  # boilerplate hedges and 0.266-0.319 for literal gibberish. The old 0.15, and
+  # every value in the old sweep, sat below all of that, so the gate kept 100% of
+  # clusters on every dataset and the sweep could not tell: all four values gave
+  # identical banks. 0.50 is the gap between hedges and facts. Re-fit on the pilots
+  # with gate-sweep below, which now spans the live range.
+  specificity_floor: 0.50
   min_teams: 2              # >= 2 guarantees no bank cluster is one team's private
                             # invention, so a LOTO weight can never reach zero
   max_clusters: 40
@@ -124,7 +131,7 @@ sweeps:
       tau: [0.72, 0.76, 0.80, 0.84, 0.88]
   gate-sweep:
     settings:
-      specificity_floor: [0.0, 0.10, 0.15, 0.20]
+      specificity_floor: [0.35, 0.45, 0.50, 0.55, 0.60]
     judge_settings:
       min_other_teams: [1, 2, 3]
 

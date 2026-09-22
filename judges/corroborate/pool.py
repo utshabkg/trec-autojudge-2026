@@ -32,6 +32,49 @@ from .textutil import normalize, scoreable_sentences, topic_text
 log = logging.getLogger(__name__)
 
 
+# The specificity gate silently did nothing for the whole of development, and the
+# sweep that was supposed to validate it could not see that, because all four swept
+# values produced byte-identical banks. The cause: `specificity` is a raw cosine
+# against the topic under BAAI/bge-base-en-v1.5, and BGE is anisotropic, so nothing
+# ever scores near zero. Measured against a real topic with the shipped encoder:
+#
+#   specific facts     0.587 to 0.753
+#   boilerplate hedges 0.361 to 0.472
+#   literal gibberish  0.266 to 0.319
+#
+# The shipped floor was 0.15 and the sweep was [0.0, 0.10, 0.15, 0.20], all of
+# which sit below the floor of the distribution. So every cluster passed, hedges
+# took the top of the consensus bank (it is sorted by team count, and a hedge is
+# exactly what every team writes), and NPREC counted them as corroborated, which
+# inverts the measure that is supposed to penalise padding.
+#
+# A raw threshold on a cosine is meaningless without knowing the encoder's scale,
+# so the number alone is not the fix. This is: say so when the gate is not gating.
+_GATE_REPORTED = set()
+
+
+def _warn_if_gate_is_inert(clusters, floor: float) -> None:
+    """Say so when the specificity gate rejects everything or nothing.
+
+    Either extreme means the floor is off the scale of whatever encoder is in use,
+    and the parameter is not doing its job. Reported once per floor per process, so
+    a per-topic loop does not flood the log. A negative floor is how the tests
+    disable the gate on purpose, so that is left alone.
+    """
+    if floor < 0 or not clusters or floor in _GATE_REPORTED:
+        return
+    _GATE_REPORTED.add(floor)
+    kept = sum(1 for c in clusters if c.specificity >= floor)
+    share = kept / len(clusters)
+    if share > 0.995 or share < 0.005:
+        lo = min(c.specificity for c in clusters)
+        hi = max(c.specificity for c in clusters)
+        log.warning(
+            "the specificity gate keeps %.1f%% of clusters at floor %.2f, so it is "
+            "not gating. Observed specificity runs %.3f to %.3f, so pick a floor "
+            "inside that range", share * 100, floor, lo, hi)
+
+
 @dataclass(frozen=True)
 class Cluster:
     """One pooled claim.
@@ -92,6 +135,7 @@ class TopicPool:
             for c in self.clusters
             if c.specificity >= specificity_floor and len(c.teams) >= min_teams
         ]
+        _warn_if_gate_is_inert(self.clusters, specificity_floor)
         # Sort by votes, then id, so the cap is deterministic under ties.
         elig.sort(key=lambda c: (-len(c.teams), c.cluster_id))
         if max_clusters and max_clusters > 0:
