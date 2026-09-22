@@ -76,6 +76,32 @@ _RETRY_SUFFIX = (
 _BATCH_RETRIES = 2
 _BATCH_BACKOFF_S = 5.0
 
+# minima-llm settings this judge decides for itself, per phase.
+#
+# These must NOT be applied with setdefault. _llm_backend runs once per phase, so
+# the nugget phase's decision would stick to the judge phase: one preflight miss
+# while vLLM is still loading pins TIMEOUT_S=5 and MAX_ATTEMPTS=1 onto a judge
+# phase that then runs against a perfectly healthy server. Every call needing more
+# than 5 s scores zero, and because the zeros land on the longest answers the
+# leaderboard still varies, so the constancy guard never fires and the file
+# uploads. Instead we record once what the operator set before we touched
+# anything, never overwrite those, and assign the rest per phase.
+_TUNABLES = ("MAX_ATTEMPTS", "TIMEOUT_S", "COOLDOWN_CAP_S", "MAX_BACKOFF_S",
+             "BATCH_MAX_FAILURES")
+_OPERATOR_TUNING = None
+
+
+def _apply_tuning(policy: Dict[str, str]) -> None:
+    """Set this phase's minima-llm policy, leaving operator overrides alone."""
+    import os
+
+    global _OPERATOR_TUNING
+    if _OPERATOR_TUNING is None:
+        _OPERATOR_TUNING = {k: os.environ[k] for k in _TUNABLES if k in os.environ}
+    for key, value in policy.items():
+        if key not in _OPERATOR_TUNING:
+            os.environ[key] = value
+
 
 # Where an unconfigured judge points. Port 9 is the discard service and is closed
 # on any normal host, so a call fails in milliseconds instead of hanging.
@@ -178,10 +204,12 @@ def _llm_backend(llm_config):
     if not reachable:
         log.warning("LLM endpoint is not reachable. Cached judgments are still used, "
                     "and anything not in the cache fails fast, falls back and scores zero")
-        os.environ.setdefault("MAX_ATTEMPTS", "1")
-        os.environ.setdefault("TIMEOUT_S", "5")
-        os.environ.setdefault("COOLDOWN_CAP_S", "0")
-        os.environ.setdefault("MAX_BACKOFF_S", "0")
+        # The breaker stays on here, deliberately: with nothing answering, every
+        # cache miss is going to fail, and aborting the batch early is the fastest
+        # honest way to reach the same all-zero result.
+        _apply_tuning({"MAX_ATTEMPTS": "1", "TIMEOUT_S": "5",
+                       "COOLDOWN_CAP_S": "0", "MAX_BACKOFF_S": "0",
+                       "BATCH_MAX_FAILURES": "25"})
     else:
         # Defaults tuned for a reasoning model behind a local server, which is
         # what the organizers run submitted code against. Measured, not guessed:
@@ -200,11 +228,11 @@ def _llm_backend(llm_config):
         # off and our own accounting is what reports trouble.
         #
         # These change no cache key, which is (model, messages, temperature,
-        # max_tokens), so TIRA's replay-from-cache check is unaffected. Each is a
-        # setdefault, so an operator can still override any of them.
-        os.environ.setdefault("TIMEOUT_S", "900")
-        os.environ.setdefault("MAX_ATTEMPTS", "4")
-        os.environ.setdefault("BATCH_MAX_FAILURES", "none")
+        # max_tokens), so TIRA's replay-from-cache check is unaffected. An
+        # operator's own value for any of them still wins.
+        _apply_tuning({"TIMEOUT_S": "900", "MAX_ATTEMPTS": "4",
+                       "COOLDOWN_CAP_S": "60", "MAX_BACKOFF_S": "20",
+                       "BATCH_MAX_FAILURES": "none"})
     if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
         os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
 

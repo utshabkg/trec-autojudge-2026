@@ -303,7 +303,8 @@ def test_a_set_but_dead_endpoint_fails_fast(monkeypatch, tmp_path):
     detected up front and the run completes in seconds.
     """
     import time
-    for var in ("MAX_ATTEMPTS", "TIMEOUT_S", "COOLDOWN_CAP_S", "MAX_BACKOFF_S"):
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setenv("OPENAI_MODEL", "Qwen/Qwen2.5-7B-Instruct")
@@ -317,6 +318,82 @@ def test_a_set_but_dead_endpoint_fails_fast(monkeypatch, tmp_path):
     elapsed = time.monotonic() - start
     assert {e.run_id for e in lb.entries if e.topic_id == "t1"} == {"r1", "r2"}
     assert elapsed < 60, f"took {elapsed:.0f}s: the dead endpoint was retried, not failed fast"
+
+
+def _serve_models(ids):
+    """A tiny /v1/models endpoint. Returns (base_url, shutdown)."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Models(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"data": [{"id": i} for i in ids]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Models)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{srv.server_port}/v1", srv.shutdown
+
+
+def test_a_dead_first_phase_does_not_cripple_a_live_second_phase(monkeypatch):
+    """Regression for the stickiest bug in this judge.
+
+    _llm_backend runs once per phase in one process. It used to apply its tuning
+    with setdefault, so if the preflight missed while vLLM was still loading, the
+    nugget phase pinned TIMEOUT_S=5 and MAX_ATTEMPTS=1 and the judge phase
+    inherited them against a healthy server. Every call needing more than five
+    seconds scored zero, and since those are the longest answers the leaderboard
+    still varied, so the constancy guard could not catch it and the file uploaded.
+    """
+    import os
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setenv("OPENAI_API_KEY", "EMPTY")
+
+    # Phase one: nothing is listening yet.
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+    J._llm_backend(None)
+    assert os.environ["TIMEOUT_S"] == "5", "a dead endpoint should still fail fast"
+
+    # Phase two: the server came up.
+    base, shutdown = _serve_models(["openai/gpt-oss-20b"])
+    try:
+        monkeypatch.setenv("OPENAI_BASE_URL", base)
+        J._llm_backend(None)
+    finally:
+        shutdown()
+    assert os.environ["TIMEOUT_S"] == "900", "the judge phase inherited the dead phase's timeout"
+    assert os.environ["MAX_ATTEMPTS"] == "4"
+    assert os.environ["BATCH_MAX_FAILURES"] == "none"
+
+
+def test_an_operator_override_survives_both_phases(monkeypatch):
+    """The documented escape hatch must still win over either phase's policy."""
+    import os
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("TIMEOUT_S", "123")
+    monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://127.0.0.1:9/v1")
+    J._llm_backend(None)
+    assert os.environ["TIMEOUT_S"] == "123"
+    base, shutdown = _serve_models(["openai/gpt-oss-20b"])
+    try:
+        monkeypatch.setenv("OPENAI_BASE_URL", base)
+        J._llm_backend(None)
+    finally:
+        shutdown()
+    assert os.environ["TIMEOUT_S"] == "123", "the operator's value was overwritten"
 
 
 def test_a_live_endpoint_gets_the_reasoning_model_defaults(monkeypatch):
@@ -338,7 +415,8 @@ def test_a_live_endpoint_gets_the_reasoning_model_defaults(monkeypatch):
         def log_message(self, *a):
             pass
 
-    for var in ("TIMEOUT_S", "MAX_ATTEMPTS", "BATCH_MAX_FAILURES"):
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
         monkeypatch.delenv(var, raising=False)
     srv = HTTPServer(("127.0.0.1", 0), Ok)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
