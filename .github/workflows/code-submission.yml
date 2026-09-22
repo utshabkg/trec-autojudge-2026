@@ -120,7 +120,7 @@ jobs:
         continue-on-error: true
         run: tira-cli verify-installation --task trec-auto-judge --team "${{ vars.TIRA_TEAM }}"
 
-      # Give the container a real endpoint to call.
+      # Warm a prompt cache on the runner, then mount it into the container.
       #
       # This step exists because the rehearsal used to prove almost nothing. The
       # endpoint was a closed port, so inside the container every call failed,
@@ -131,25 +131,49 @@ jobs:
       # and the replay reproduced that nothing exactly. So a green run told us the
       # image builds and boots, and nothing whatever about the judging path.
       #
-      # The stub answers both prompts with parseable, deterministic replies that
-      # differ per answer, so the leaderboard really separates systems. Nothing it
-      # says is ever scored. What is under test is that the judge can reach an
-      # endpoint from inside the image, that minima-llm works there, that
-      # CACHE_DIR is writable, and that the replay genuinely replays.
-      - name: Start the stub LLM endpoint
+      # We first tried giving the container a stub endpoint on the runner, reached
+      # over the docker bridge. It could not connect, and chasing container-to-host
+      # routing on a hosted runner is not worth it, because a warm cache tests more
+      # anyway. TIRA's own sandbox has no internet either, so serving from cache is
+      # the mode that actually matters.
+      #
+      # So: run the judge here, on the runner, against a local stub. That warms
+      # $CACHE_DIR with real parseable replies. Mount that cache into the container
+      # and the container needs no network at all. What this proves is stronger
+      # than reachability. minima-llm's cache key is the model plus the exact
+      # messages, so the container only gets hits if its prompts are byte-identical
+      # to the ones built out here. That is exactly the property TIRA's determinism
+      # check depends on, and nothing else we run tests it.
+      - name: Warm a prompt cache against a stub endpoint
         if: ${{ inputs.judge == 'nuggetrecall' }}
+        env:
+          OPENAI_BASE_URL: http://127.0.0.1:8000/v1
+          OPENAI_MODEL: Qwen/Qwen2.5-7B-Instruct
+          OPENAI_API_KEY: EMPTY
+          HF_HOME: ${{ github.workspace }}/.hf
         run: |
           set -euo pipefail
-          nohup python3 scripts/stub_openai.py --host 0.0.0.0 --port 8000 \
+          python3 scripts/stub_openai.py --host 127.0.0.1 --port 8000 \
             > stub-openai.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://127.0.0.1:8000/v1/models >/dev/null && break || sleep 1
           done
-          curl -sf http://127.0.0.1:8000/v1/models | head -c 200; echo
-          # The container reaches the runner through the docker bridge gateway.
-          # 127.0.0.1 inside a container is the container itself.
-          GW=$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
-          echo "DOCKER_GATEWAY=${GW:-172.17.0.1}" >> "$GITHUB_ENV"
+          curl -sf http://127.0.0.1:8000/v1/models | head -c 120; echo
+
+          export CACHE_DIR="${{ github.workspace }}/ci-cache"
+          mkdir -p "$CACHE_DIR"
+          auto-judge run \
+            --workflow judges/${{ inputs.judge }}/workflow.yml \
+            --variant ${{ inputs.variant }} \
+            --rag-responses data/kiddie/runs/repgen/ \
+            --rag-topics data/kiddie/topics/kiddie-topics.jsonl \
+            --out-dir ./ci-warm
+          # If this fails, the judge is broken here, before any container is
+          # involved, which is a much easier failure to read.
+          # auto-judge run writes straight into --out-dir, with no subdirectory.
+          python scripts/check_upload_dir.py ./ci-warm
+          ls -l "$CACHE_DIR"
+          echo "CI_CACHE=$CACHE_DIR" >> "$GITHUB_ENV"
 
       - name: Code submission
         # tira-cli refuses to forward a variable that is unset where it runs
@@ -194,11 +218,15 @@ jobs:
           # degenerates to the all-zero case described on the stub step.
           LLM=()
           if grep -qE "^uses_llm:[[:space:]]*true" "judges/${{ inputs.judge }}/workflow.yml"; then
-            export OPENAI_BASE_URL="http://${DOCKER_GATEWAY:-172.17.0.1}:8000/v1"
+            # The endpoint is deliberately unreachable. Every judgment must come
+            # from the mounted cache, which is the point: it is the same mode TIRA
+            # replays in, and it fails loudly if the container's prompts differ
+            # from the ones that warmed the cache.
+            export OPENAI_BASE_URL="EMPTY"
             LLM=(--forward-environment-variable OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL
-                 --cache-behaviour deterministic --mount-cache '$CACHE_DIR=EMPTY_DIR'
-                 --allow-network)
-            echo "LLM judge: endpoint $OPENAI_BASE_URL, forwarding the OPENAI_* names"
+                 --cache-behaviour deterministic
+                 --mount-cache "\$CACHE_DIR=${CI_CACHE}")
+            echo "LLM judge: serving from the warmed cache at ${CI_CACHE}"
           fi
           tira-cli code-submission "${EXTRA[@]}" "${LLM[@]}" \
             --path . \

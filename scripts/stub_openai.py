@@ -12,19 +12,19 @@ too, since both the first run and the replay did nothing and so agreed exactly.
 The result was a green rehearsal that proved the image builds and boots, and
 proved nothing at all about the path that does the judging.
 
-With this stub reachable and --allow-network, the container really calls out, the
-prompt cache is really written, and the replay really replays. Whatever the stub
-says is not the point and is never scored. What is being tested is that the judge
-can reach an endpoint from inside the image, that minima-llm works there, that
-CACHE_DIR is writable, and that the emitted leaderboard separates systems.
+CI runs the judge against this stub ON THE RUNNER, which warms the prompt cache,
+and then mounts that cache into the container. We first tried letting the
+container call the stub over the docker bridge and it could not connect. The cache
+route is better anyway: TIRA's own sandbox has no internet, so serving from cache
+is the mode that matters, and because minima-llm keys the cache on the model plus
+the exact messages, the container only gets hits if its prompts are byte-identical
+to the ones built outside. Nothing else we run tests that, and it is exactly what
+TIRA's determinism check relies on.
 
-Replies are deterministic and depend only on the prompt, so the cache behaves as
-it would against a real server.
+Whatever the stub says is never scored. Replies are deterministic and depend only
+on the prompt, so the cache behaves as it would against a real server.
 
-    python scripts/stub_openai.py --port 8000 --host 0.0.0.0
-
-Bind 0.0.0.0 and point the container at the docker bridge gateway (172.17.0.1 on
-a standard Linux runner), because 127.0.0.1 inside a container is the container.
+    python scripts/stub_openai.py --port 8000 --host 127.0.0.1
 """
 
 from __future__ import annotations
@@ -36,9 +36,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 
-# Deliberately varied labels. An all-"support" stub would make every system score
-# identically, the leaderboard would be constant, and check_upload_dir would
-# refuse it, which would look like a failure of the judge rather than of the stub.
+# Labels have to make different responses score DIFFERENTLY, not merely differ as
+# text. The first version cycled through the labels starting at a per-response
+# offset, which looks varied and is not: a cyclic shift over a fixed number of
+# facts gives every response the same multiset of labels, so every system scored
+# identically and check_upload_dir refused the leaderboard for the stub's fault
+# rather than the judge's. What varies here is how MANY facts are supported.
 _LABELS = ("support", "partial", "no")
 
 
@@ -49,17 +52,29 @@ def _nuggets(n: int = 6) -> str:
 
 
 def _judgments(prompt: str) -> str:
-    """Label every numbered fact the prompt lists, varying by the answer's text.
+    """Label every numbered fact, with a per-response number of supported facts.
 
-    The label depends on a hash of the response text, so different systems get
-    different scores and the leaderboard has something to rank.
+    The count of supported facts is derived from the response text, so different
+    systems get genuinely different scores and the leaderboard has something to
+    rank. Deterministic, so the prompt cache behaves as it would against a real
+    server.
     """
     facts = re.findall(r"^\s*(\d+)\.", prompt, flags=re.MULTILINE)
     count = max((int(f) for f in facts), default=6)
     m = re.search(r"RESPONSE TO JUDGE:\n(.*?)\n\nFACTS TO CHECK", prompt, flags=re.S)
-    seed = sum(ord(c) for c in (m.group(1) if m else prompt)[:400])
-    return "\n".join(f"{i}: {_LABELS[(seed + i) % len(_LABELS)]}"
-                     for i in range(1, count + 1))
+    answer = m.group(1) if m else prompt
+    seed = sum(ord(c) * (i + 1) for i, c in enumerate(answer[:400]))
+    n_support = seed % (count + 1)              # 0 .. count
+    n_partial = (seed // 7) % (count - n_support + 1)
+    out = []
+    for i in range(1, count + 1):
+        if i <= n_support:
+            out.append(f"{i}: support")
+        elif i <= n_support + n_partial:
+            out.append(f"{i}: partial")
+        else:
+            out.append(f"{i}: no")
+    return "\n".join(out)
 
 
 def _reply_for(prompt: str) -> str:

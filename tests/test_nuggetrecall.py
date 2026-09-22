@@ -530,9 +530,18 @@ def test_the_ci_stub_endpoint_speaks_what_our_parsers_read():
     labels = parse_judgments(ask("Bees collect nectar."), len(nuggets))
     assert labels is not None and len(labels) == len(nuggets)
 
-    # Different answers must score differently, or the leaderboard is constant
-    # and check_upload_dir would refuse it for the stub's sake, not the judge's.
-    assert ask("Bees fan their wings to evaporate water from nectar.") != ask("Bees collect nectar.")
+    # Different answers must score DIFFERENTLY, not merely read differently.
+    # The first stub cycled labels from a per-response offset, so every response
+    # got the same multiset of labels and therefore an identical score. The
+    # leaderboard came out constant and check_upload_dir refused it, which looked
+    # like the judge failing. Comparing reply text passed that bug happily.
+    answers = ["Bees collect nectar from flowers.",
+               "Bees fan their wings to evaporate water from the nectar.",
+               "An unrelated report about coastal erosion and sediment.",
+               "Short."]
+    scored = {tuple(sorted(score(parse_judgments(ask(a), len(nuggets)), nuggets).items()))
+              for a in answers}
+    assert len(scored) > 1, "every answer scored the same, so the leaderboard cannot rank"
 
 
 # ------------------------------------------------------------- NR_RANK
