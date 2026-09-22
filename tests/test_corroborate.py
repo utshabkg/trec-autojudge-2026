@@ -352,6 +352,55 @@ def test_batched_clustering_equivalence_on_a_larger_synthetic_pool():
         assert [sorted(c.teams) for c in got.clusters] == [sorted(c.teams) for c in ref.clusters]
 
 
+# ------------------------------------------------------------- data policy
+
+
+def test_inline_attribution_writes_no_document_id_to_stdout(capsys):
+    """Document ids must never reach stdout.
+
+    The framework's Document.get_text_chunks prints "Breaking documents <id> into
+    N chunks" for every document it splits. Document ids are part of the Report,
+    so outside the permitted ten-topic window they are restricted, and a run log
+    full of them is a surface a developer must never read. attribution.py calls
+    the underlying chunking functions directly to avoid that print. This pins it.
+    """
+    from autojudge_base.document.document import Document
+    from judges.corroborate.attribution import score_inline
+
+    long_text = "\n".join(f"Solar sentence number {i} about panel efficiency." for i in range(80))
+    doc_id = "SENTINEL-DOC-ID-7f3a"
+    rep = Report(
+        metadata=ReportMetaData(team_id="team_a", run_id="run_a", topic_id="t1"),
+        responses=[NeuclirReportSentence(text=AGREE_1, citations=[doc_id])],
+        documents={doc_id: Document(id=doc_id, text=long_text)},
+    )
+    capsys.readouterr()
+    score_inline(rep, StubEncoders(), doc_chunk_chars=120, max_doc_chunks=6,
+                 min_sentence_words=5)
+    out = capsys.readouterr()
+    assert doc_id not in out.out, "a document id was printed to stdout"
+    assert doc_id not in out.err, "a document id was printed to stderr"
+
+
+def test_citation_read_failure_logs_the_exception_type_not_its_message(caplog):
+    """An exception message can quote restricted content, so log its type only."""
+    import logging
+    from judges.corroborate import attribution
+
+    secret = "SENTINEL-RESTRICTED-SENTENCE"
+
+    class Boom:
+        class metadata:
+            run_id = "run_x"
+        def get_sentences_with_citations(self):
+            raise ValueError(f"bad citation in: {secret}")
+
+    with caplog.at_level(logging.WARNING, logger=attribution.log.name):
+        assert attribution._cited_sentences(Boom()) == []
+    assert "ValueError" in caplog.text
+    assert secret not in caplog.text
+
+
 # --------------------------------------------------------- contended GPU
 
 

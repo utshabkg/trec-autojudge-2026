@@ -26,6 +26,31 @@ import numpy as np
 
 from .textutil import normalize, scoreable_sentences
 
+try:
+    # The two functions Document.get_text_chunks is built from. Calling them
+    # directly gives byte-identical chunks without the framework's
+    #   print(f"Breaking documents {self.id} into ...")
+    # which writes a document id to stdout for every document split. Document ids
+    # are part of the Report, so outside the permitted ten-topic window they are
+    # restricted, and a run log full of them is a surface we must never read.
+    from autojudge_base.document.text_chunker import (
+        get_limit_length_chunks,
+        get_sentence_chunks_on_newline,
+    )
+except ImportError:  # pragma: no cover - older framework layouts
+    get_limit_length_chunks = None
+    get_sentence_chunks_on_newline = None
+
+
+def _doc_chunks(doc, limit: int):
+    """Chunk a document the way the framework does, silently."""
+    if get_limit_length_chunks is not None:
+        return get_limit_length_chunks(
+            get_sentence_chunks_on_newline(doc.get_text()), limit=limit
+        )
+    text = normalize(getattr(doc, "text", "") or "")
+    return [text[i : i + limit] for i in range(0, len(text), limit)] or [text]
+
 log = logging.getLogger(__name__)
 
 # Track rules cap citations at 3 per sentence, and get_sentences_with_citations
@@ -68,7 +93,12 @@ def _cited_sentences(report) -> List[Tuple[str, List[str]]]:
             cites = [c for c in (s.citations or []) if c]
             out.append((text, cites[:_MAX_CITED_DOCS_PER_SENTENCE]))
     except Exception as exc:
-        log.warning("run %s: could not read citations (%s)", report.metadata.run_id, exc)
+        # Type only, never the message: an exception raised while reading a report
+        # can quote the offending citation or sentence, and outside the permitted
+        # window that is restricted content. The data policy is explicit that a
+        # traceback's type and location are ours but a value in its message is not.
+        log.warning("run %s: could not read citations (%s)",
+                    report.metadata.run_id, type(exc).__name__)
     return out
 
 
@@ -104,7 +134,7 @@ def score_inline(
             if doc is None:
                 continue
             try:
-                chunks = doc.get_text_chunks(doc_chunk_chars)[:max_doc_chunks]
+                chunks = _doc_chunks(doc, doc_chunk_chars)[:max_doc_chunks]
             except Exception:
                 chunks = [normalize(getattr(doc, "text", "") or "")[:doc_chunk_chars]]
             chunks = [c for c in chunks if c and c.strip()]
