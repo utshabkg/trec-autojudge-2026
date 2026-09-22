@@ -843,6 +843,30 @@ team can gain from its own runs.
 - Found and fixed a code-submission bug that would have been silent: the workflow
   never forwarded the LLM endpoint names, so a NuggetRecall code submission could
   never have received a model on TIRA.
+- Scored NuggetRecall on the organizers' smaller model, `Qwen/Qwen2.5-7B-Instruct`:
+  0.654 max Kendall on rag25-gen, rank 65 of 93, against 0.788 and rank 45 for
+  Qwen3-30B. The judge works on the small model but gives up about 0.13 Kendall.
+- **NuggetRecall's code submission is proven.** The first attempt stalled for 50
+  minutes and was killed. The cause was minima-llm's `MAX_ATTEMPTS`, whose default
+  is 50 rather than the 6 we assumed, and our own fast-fail path, which only
+  triggered when the endpoint variable was unset. CI sets a placeholder, so it
+  never triggered. Added an endpoint preflight that opens a socket once and, if
+  nothing answers, caps attempts and timeouts before any call is made. The dry run
+  then finished in 11 minutes with every TIRA check green, including the two that
+  matter most for a cached LLM judge: the image produced valid outputs, and the
+  cache directory mounted through `CACHE_DIR` was both used and sufficient to
+  re-execute the software to the same results with the endpoint removed. That is
+  the reproducibility proof a code submission is graded on, and it confirms the
+  cache key really does exclude the endpoint URL.
+- Fixed a failure mode the gpt-oss-20b run exposed. `run_batched` can raise for a
+  whole batch rather than per item, and it did so on the first call of the judge
+  phase, taking all 5302 judgments with it. The caller then retried under a changed
+  prompt, which is right for an unparsable reply but wrong here, because changing
+  the prompt defeats the cache and forces every answer to be re-sent. Had the throw
+  landed on the final attempt, every judgment would have scored zero behind a single
+  warning line. A batch-level throw is now resent unchanged, twice, so the cache
+  replays what already succeeded. The two kinds of retry are now separate by
+  design, and two tests pin the distinction.
 
 ### 2026-09-19 and 20
 

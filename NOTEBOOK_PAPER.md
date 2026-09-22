@@ -108,8 +108,11 @@ NuggetRecall wins on both, so it is our main submission.
 
 - **Data submission:** NuggetRecall on rag26 and ragtime26, complete for every run and
   topic. Scores on the test sets come out after TREC.
-- **[pending]** Corroborate as a second submission, and the code submissions for both
-  judges.
+- **Code submission, rehearsed end to end **[done]**:** both judges build as containers
+  and pass every TIRA check on a dry run, including the one that matters for an LLM
+  judge. TIRA re-runs the container with the endpoint removed and confirms the cached
+  prompts alone reproduce the same leaderboard.
+- **[pending]** the real code submissions, and Corroborate as a second data submission.
 
 ---
 
