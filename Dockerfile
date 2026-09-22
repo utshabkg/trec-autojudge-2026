@@ -74,7 +74,15 @@ ENV HF_HOME=/models \
 # 4.8 GiB that nothing here loads. Keeping safetensors only takes it to 3.2 GiB.
 # That is worth caring about because the real submission pushes this image to
 # registry.webis.de, and that round trip has already timed out once.
-# All three repos do publish safetensors, so dropping *.bin loses nothing.
+# All repos baked here publish safetensors, so dropping *.bin loses nothing.
+#
+# The multilingual reranker (BAAI/bge-reranker-v2-m3, 2.16 GiB) is deliberately NOT
+# baked. It was included on the assumption that ragtime26 documents were NeuCLIR
+# Chinese, Persian and Russian. Probing the release showed both test sets are
+# English (ragtime26 documents carry lang=eng and are entirely Latin script), so
+# it would be two thirds of the image for a variant nothing submits. Leaving it out
+# takes the weights from 3.2 GiB to about 1.1 GiB, which matters because this image
+# is pushed to registry.webis.de and that round trip has timed out once.
 RUN python -c "\
 from huggingface_hub import snapshot_download; \
 [snapshot_download(r, ignore_patterns=[ \
@@ -83,7 +91,6 @@ from huggingface_hub import snapshot_download; \
  ]) for r in ( \
     'BAAI/bge-base-en-v1.5', \
     'cross-encoder/nli-deberta-v3-base', \
-    'BAAI/bge-reranker-v2-m3', \
 )]" \
  && du -sh /models
 

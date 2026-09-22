@@ -98,9 +98,11 @@ variants:
     judge_settings:
       use_cross_encoder: false
 
-  # ragtime26 documents are NeuCLIR and not all English, so an English-only NLI
-  # model would return noise rather than an error. This swaps in a multilingual
-  # reranker for the attribution and band-adjudication steps.
+  # NOT USED FOR SUBMISSION. Kept as a documented fallback. It was written for
+  # multilingual NeuCLIR documents, but both 2026 releases turned out to be English,
+  # so the English NLI model is correct and this reranker is not baked into the
+  # container image. Running this variant inside the container therefore needs the
+  # model mounted: tira-cli code-submission --mount-hf-model BAAI/bge-reranker-v2-m3
   multilingual:
     judge_settings:
       multilingual_cross_encoder: "BAAI/bge-reranker-v2-m3"

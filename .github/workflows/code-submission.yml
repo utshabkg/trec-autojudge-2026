@@ -74,12 +74,12 @@ jobs:
 
       # tira-cli runs pytest as a submission gate, and two of the framework
       # tests execute the judge for real, so the weights must be present here
-      # too. All three are fetched because the image bakes all three.
+      # too. The same two the image bakes.
       - name: Cache encoder weights
         uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.hf
-          key: hf-submit-v1
+          key: hf-submit-v2
 
       - name: Fetch encoder weights
         env:
@@ -88,8 +88,7 @@ jobs:
           python - <<'PY'
           from huggingface_hub import snapshot_download
           for repo in ("BAAI/bge-base-en-v1.5",
-                       "cross-encoder/nli-deberta-v3-base",
-                       "BAAI/bge-reranker-v2-m3"):
+                       "cross-encoder/nli-deberta-v3-base"):
               print("fetching", repo, flush=True)
               snapshot_download(repo)
           PY
