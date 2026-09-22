@@ -43,6 +43,12 @@ _run)
     export CACHE_DIR="${CACHE_DIR:-./cache/$JUDGE}"
     if grep -qE "^uses_llm:[[:space:]]*true" "judges/$JUDGE/workflow.yml"; then
         eval "$(bash scripts/serve_llm.sh env)"
+        # minima-llm allows 32 requests in flight by default, and vLLM here is
+        # configured for 64 concurrent sequences. On the first rag25-gen run, vLLM
+        # metrics showed exactly 31 running and 0 waiting: the client, not the GPU,
+        # was the bottleneck. Match the server.
+        export MAX_OUTSTANDING="${MAX_OUTSTANDING:-64}"
+        export BATCH_NUM_WORKERS="${BATCH_NUM_WORKERS:-64}"
     else
         export OPENAI_MODEL=none OPENAI_BASE_URL=EMPTY OPENAI_API_KEY=EMPTY
     fi
