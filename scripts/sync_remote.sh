@@ -23,11 +23,13 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 CODE_EXCLUDES=(
     --exclude local-data --exclude local-data-dev
     --exclude 'output*/' --exclude cache/ --exclude .hf/
-    --exclude metaeval/ --exclude models/
+    --exclude metaeval/ --exclude models/ --exclude fusion/
     --exclude __pycache__/ --exclude '*.egg-info/' --exclude .pytest_cache/
-    # Logs are written on the node by running jobs and by the vLLM server. Without
-    # this, the code push's --delete removed them, because they do not exist here:
-    # the first casualty was vllm.log, deleted from under a live server.
+    # Anything produced ON the node must be listed above, or --delete removes it
+    # simply because it does not exist here. vllm.log went first, from under a
+    # live server. fusion/ went next, three built leaderboards, minutes before
+    # they were due to be uploaded. If you make the node write somewhere new,
+    # add it here in the same commit.
     --exclude '*.log'
 )
 
