@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (first real scores from TIRA on three pilots).** This file is the single running record of the
+**Last updated: 2026-09-22 (NuggetRecall built, running on rag25-gen).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -233,6 +233,46 @@ it. The ablations in section 6 are designed to quantify what is left.
 
 ---
 
+## 2b. Second judge: NuggetRecall
+
+Built after the pilots showed Corroborate is strong on long reports and weak on short
+RAG answers (section 5). It follows the approach behind the strongest public judge
+on rag25-gen.
+
+**Step 1, per topic: an answer key from the request alone.** One LLM call generates
+8 to 20 atomic, checkable facts, each marked VITAL or OKAY. The workflow sets
+`nugget_depends_on_responses: false`, so the nugget phase receives no responses at
+all and the key cannot depend on what any system said.
+
+**Step 2, per report: one call labels every fact** `support`, `partial` or `no`.
+One call per report rather than per (report, fact) pair keeps the test sets at about
+15,000 calls instead of hundreds of thousands. The prompt and the all-or-nothing
+parser are the ones already validated in our TREC RAG 2026 work.
+
+**Measures**, all nugget-recall variants: `NR_VITAL` (vital facts, partial half
+credit), `NR_ALL`, `NR_VITAL_STRICT` (full support only) and `NR_WEIGHTED` (vital
+weight 1, okay 0.5).
+
+Three details that are easy to get wrong, all handled and tested:
+
+- **A retry must change the prompt.** The prompt cache keys on the exact messages,
+  so re-sending an identical prompt after an unparsable reply replays the same bad
+  reply forever. Retries append fixed reminder strings, which gives them a new cache
+  key while keeping a replay deterministic.
+- **No endpoint must not mean a crash.** The LLM client raises when
+  `OPENAI_BASE_URL` is unset, which is exactly the state of the code-submission dry
+  run. A missing endpoint now becomes a closed local port, so cached judgments are
+  still served and only misses fall back.
+- **The question lives in a different field in every dataset.** rag25 keeps it only
+  in `problem_statement`, rag26 only in `title` (the full narrative, median 553
+  characters), and ragtime26 across `title`, `problem_statement` and `background`.
+  A judge reading one fixed field would have produced meaningless keys on at least
+  one dataset. The request text concatenates whatever is present.
+
+**Answer-key quality on rag25-gen, measured:** 105 topics, 15 to 20 facts each
+(median 18), 48% marked vital, no topic fell back to a placeholder. The facts are
+specific and checkable, for example named statutes with their years.
+
 ## 3. Decision log
 
 The reasoning behind each choice, which is the part hardest to reconstruct later.
@@ -250,6 +290,9 @@ The reasoning behind each choice, which is the part hardest to reconstruct later
 | D9 | `transformers<5` pinned | Not needed once D8 is in place, but kept so the container runs the same versions our numbers were produced with. |
 | D10 | Code submission runs from **GitHub Actions** | This machine has no container runtime and no route to one. See section 7. |
 | D11 | Five measures, not one | `Max()` over measures is free upside, and the organizers evaluate per truth measure. |
+| D12 | **Add an LLM judge, NuggetRecall, alongside Corroborate** | Revisits D1 on evidence. Corroborate ranks 7 of 60 on report generation but 86 of 91 on short RAG answers, where the strongest public judges derive nuggets from the question. D1 bought robustness and cost a great deal of rank on rag26. Corroborate stays for ragtime26, where it is competitive. |
+| D13 | Answer keys from the **request alone** (`nugget_depends_on_responses: false`) | The approach behind the top rag25-gen judge. It makes the key independent of what systems said, and keeps the bank readable under the data policy for every topic. |
+| D14 | Local judge model **Qwen3-30B-A3B-Instruct-2507, FP8**, served by vLLM on the node | Mixture of experts with about 3B active parameters, so fast, and 30 GB so it fits one 48 GB card with room for batching. Stronger than the Qwen2.5-7B the organizers use. The code submission takes whatever model TIRA injects. |
 
 ---
 
