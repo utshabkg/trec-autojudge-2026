@@ -5,14 +5,23 @@
 # rootless podman cannot be configured. A GitHub runner has Docker, so the image
 # is built and submitted from here instead.
 #
-# This is easy for us only because the judge declares `uses_llm: false`. The
-# local kiddie test that tira-cli runs inside the submission therefore needs no
-# network and no LLM endpoint, so there is no --allow-network, no cache
-# determinism proof, and no prompt cache to ship.
-#
 # Run it with dry_run: true first. That builds the image, runs it on kiddie, and
 # uploads nothing. Only when that is green, run again with dry_run: false, which
-# drops both --dry-run and --dataset so the judge runs on every dataset.
+# drops --dry-run so the submission is actually registered.
+#
+# --dataset is passed in BOTH cases, and that is not cosmetic. It names the
+# dataset tira-cli runs the built image on before uploading, which it does either
+# way. Omit it and tira_client.submit_code walks every public dataset in the task
+# and keeps the LAST one that has a format and input mirrors, with no break
+# (tira_client.py, "if dataset_id is None"). For trec-auto-judge that pool
+# includes the pilots, which are tens of runs over about a hundred long reports.
+# Running the image on one of those, on a 2-vCPU runner with the CPU-only torch
+# this Dockerfile pins, would blow the job timeout and register nothing. Worse,
+# the one command that has to work on the deadline would be the one command never
+# rehearsed, because dry_run: true takes the other branch.
+#
+# TIRA grades a code submission by re-running the image itself, on its own
+# hardware, over whatever datasets it chooses. Nothing here controls that.
 name: TIRA code submission
 
 on:
@@ -111,6 +120,37 @@ jobs:
         continue-on-error: true
         run: tira-cli verify-installation --task trec-auto-judge --team "${{ vars.TIRA_TEAM }}"
 
+      # Give the container a real endpoint to call.
+      #
+      # This step exists because the rehearsal used to prove almost nothing. The
+      # endpoint was a closed port, so inside the container every call failed,
+      # NuggetRecall fell back, and the pre-upload test wrote an all-zero
+      # leaderboard. TIRA accepted it: its format check only looks at the shape of
+      # the file and never asks whether a measure varies between systems. The
+      # deterministic-cache proof passed too, because the first run cached nothing
+      # and the replay reproduced that nothing exactly. So a green run told us the
+      # image builds and boots, and nothing whatever about the judging path.
+      #
+      # The stub answers both prompts with parseable, deterministic replies that
+      # differ per answer, so the leaderboard really separates systems. Nothing it
+      # says is ever scored. What is under test is that the judge can reach an
+      # endpoint from inside the image, that minima-llm works there, that
+      # CACHE_DIR is writable, and that the replay genuinely replays.
+      - name: Start the stub LLM endpoint
+        if: ${{ inputs.judge == 'nuggetrecall' }}
+        run: |
+          set -euo pipefail
+          nohup python3 scripts/stub_openai.py --host 0.0.0.0 --port 8000 \
+            > stub-openai.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/v1/models >/dev/null && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:8000/v1/models | head -c 200; echo
+          # The container reaches the runner through the docker bridge gateway.
+          # 127.0.0.1 inside a container is the container itself.
+          GW=$(docker network inspect bridge -f '{{range .IPAM.Config}}{{.Gateway}}{{end}}')
+          echo "DOCKER_GATEWAY=${GW:-172.17.0.1}" >> "$GITHUB_ENV"
+
       - name: Code submission
         # tira-cli refuses to forward a variable that is unset where it runs
         # ("Some environment variables are missing and can not be forwarded"),
@@ -118,21 +158,20 @@ jobs:
         # and pass real values in. A real submission records only the names, and
         # the organizers inject their own values on TIRA.
         #
-        # So these are placeholders for the local test only. The runner has no
-        # model to reach, and that test runs without network anyway, so the
-        # endpoint is a closed port, which NuggetRecall handles by falling back.
-        # The model name is the organizers' exact id, so a warm prompt cache built
-        # under that name would replay here if one is ever mounted.
+        # These values are for the local test only, and are never stored. The
+        # model id is the organizers' exact one, so the cache this run writes is
+        # keyed the way theirs would be.
         env:
-          OPENAI_BASE_URL: http://127.0.0.1:9/v1
           OPENAI_MODEL: Qwen/Qwen2.5-7B-Instruct
           OPENAI_API_KEY: EMPTY
         run: |
           set -euo pipefail
-          EXTRA=()
+          # kiddie is small and ships in the repo, so the pre-upload test is
+          # quick. It is passed on a real submission too: see the header. Leaving
+          # it off lets tira-cli pick an arbitrary large pilot set instead.
+          EXTRA=(--dataset kiddie-20260605-training)
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            # kiddie is small and ships in the repo, so the local test is quick.
-            EXTRA=(--dry-run --dataset kiddie-20260605-training)
+            EXTRA+=(--dry-run)
           fi
           # An LLM judge needs two more things, and the first is not optional.
           #
@@ -149,13 +188,42 @@ jobs:
           #
           # Corroborate declares uses_llm: false and makes no LLM calls, so it
           # needs neither.
+          #
+          # --allow-network lets the pre-upload run reach the stub above. Without
+          # it the container is isolated, every call fails, and the whole test
+          # degenerates to the all-zero case described on the stub step.
           LLM=()
           if grep -qE "^uses_llm:[[:space:]]*true" "judges/${{ inputs.judge }}/workflow.yml"; then
+            export OPENAI_BASE_URL="http://${DOCKER_GATEWAY:-172.17.0.1}:8000/v1"
             LLM=(--forward-environment-variable OPENAI_API_KEY OPENAI_BASE_URL OPENAI_MODEL
-                 --cache-behaviour deterministic --mount-cache '$CACHE_DIR=EMPTY_DIR')
-            echo "LLM judge: forwarding the OPENAI_* names and using the deterministic cache"
+                 --cache-behaviour deterministic --mount-cache '$CACHE_DIR=EMPTY_DIR'
+                 --allow-network)
+            echo "LLM judge: endpoint $OPENAI_BASE_URL, forwarding the OPENAI_* names"
           fi
           tira-cli code-submission "${EXTRA[@]}" "${LLM[@]}" \
             --path . \
             --task trec-auto-judge \
-            --command 'auto-judge run --workflow /auto-judge/judges/${{ inputs.judge }}/workflow.yml --variant ${{ inputs.variant }} --rag-responses $inputDataset/runs/*/ --rag-topics $inputDataset/topics/*.jsonl --out-dir $outputDir'
+            --command 'auto-judge run --workflow /auto-judge/judges/${{ inputs.judge }}/workflow.yml --variant ${{ inputs.variant }} --rag-responses $inputDataset/runs/*/ --rag-topics $inputDataset/topics/*.jsonl --out-dir $outputDir' \
+            2>&1 | tee tira-submission.log
+
+      # The step above passes on an all-zero leaderboard, because TIRA's format
+      # check never asks whether a measure varies between systems. That is exactly
+      # the failure we shipped once already, so check it here. tira-cli prints the
+      # directory it left the container's output in.
+      - name: The container's output must actually rank systems
+        run: |
+          set -euo pipefail
+          OUT=$(grep -oE '/tmp/tira-[A-Za-z0-9]+/output' tira-submission.log | tail -1 || true)
+          if [ -z "$OUT" ] || [ ! -d "$OUT" ]; then
+            # A real submission has already been registered by this point, so
+            # failing here could not undo it and would only be noise. The dry run
+            # exercises the same code path and is where this must catch things.
+            echo "::warning::no container output directory in the log, nothing checked"
+            exit 0
+          fi
+          echo "checking $OUT"
+          python scripts/check_upload_dir.py "$OUT"
+
+      - name: Stub endpoint log
+        if: ${{ always() && inputs.judge == 'nuggetrecall' }}
+        run: tail -20 stub-openai.log || true

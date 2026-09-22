@@ -13,6 +13,7 @@ from autojudge_base.report import Report, ReportMetaData
 from autojudge_base.report_sentences import NeuclirReportSentence
 
 import judges.nuggetrecall.judge as J
+import judges.nuggetrecall.prompts as J_PROMPTS
 from judges.nuggetrecall.measures import MEASURE_NAMES
 from judges.nuggetrecall.prompts import (
     Nugget, parse_judgments, parse_nuggets, score, strip_reasoning,
@@ -494,3 +495,37 @@ def test_preflight_treats_any_http_reply_as_reachable():
         srv.shutdown()
     assert not J._endpoint_reachable("http://127.0.0.1:9/v1", None, attempts=1, timeout=1)
     assert not J._endpoint_reachable("EMPTY", None, attempts=1, timeout=1)
+
+
+# ------------------------------------------------- the CI stub endpoint
+
+
+def test_the_ci_stub_endpoint_speaks_what_our_parsers_read():
+    """The stub is only useful if its replies survive our own parsers.
+
+    It exists so the code submission's container test really calls an LLM. If a
+    prompt change made the stub's replies unparsable, the container would fall
+    back to zeros and the rehearsal would go back to proving nothing, quietly.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "scripts" / "stub_openai.py"
+    spec = importlib.util.spec_from_file_location("stub_openai", path)
+    stub = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(stub)
+
+    gen = stub._reply_for(J_PROMPTS.generation_messages("how do bees make honey")[0]["content"])
+    nuggets = parse_nuggets(gen)
+    assert len(nuggets) >= 5 and any(n.vital for n in nuggets), gen
+
+    def ask(answer):
+        return stub._reply_for(
+            J_PROMPTS.judge_messages("how do bees make honey", answer, nuggets)[0]["content"])
+
+    labels = parse_judgments(ask("Bees collect nectar."), len(nuggets))
+    assert labels is not None and len(labels) == len(nuggets)
+
+    # Different answers must score differently, or the leaderboard is constant
+    # and check_upload_dir would refuse it for the stub's sake, not the judge's.
+    assert ask("Bees fan their wings to evaporate water from nectar.") != ask("Bees collect nectar.")
