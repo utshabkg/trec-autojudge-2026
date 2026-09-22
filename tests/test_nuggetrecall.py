@@ -586,3 +586,40 @@ def test_nr_rank_is_emitted_for_every_row(fake):
     # The empty report scored zero, so it must rank last.
     assert rows["r3"]["NR_RANK"] == min(v["NR_RANK"] for v in rows.values())
     assert all(0.0 <= v["NR_RANK"] <= 1.0 for v in rows.values())
+
+
+def test_derived_nr_rank_uses_the_judges_two_conventions():
+    """Pins scripts/add_rank_measure.py to how the judge and the builder behave.
+
+    Verified bit for bit against the judge's own output on rag25-gen, but only
+    after getting both halves right, and they differ:
+
+      per topic  - rank over the runs PRESENT on that topic (leaderboards are
+                   ragged, so the denominator varies per topic)
+      aggregate  - divide by EVERY topic, counting an absence as 0.0, which is
+                   what LeaderboardBuilder does under fix_aggregate
+
+    Mixing them up moved 51 aggregates by up to 0.047, which is several times the
+    run-to-run noise, so it would have looked like a real effect.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent.parent / "scripts" / "add_rank_measure.py"
+    spec = importlib.util.spec_from_file_location("add_rank_measure", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    # Run "c" is absent from topic t2, so t2 ranks two runs, not three.
+    base = {"t1": {"a": 0.9, "b": 0.5, "c": 0.1},
+            "t2": {"a": 0.2, "b": 0.8}}
+    per_topic, agg = mod.compute_rank(base)
+
+    assert set(per_topic["t2"]) == {"a", "b"}, "an absent run must not be ranked"
+    assert per_topic["t2"] == {"a": 0.0, "b": 1.0}, "two runs, so 0 and 1"
+    assert per_topic["t1"] == {"a": 1.0, "b": 0.5, "c": 0.0}
+
+    # Aggregates divide by 2 topics even for c, which appears on only one.
+    assert agg["a"] == pytest.approx((1.0 + 0.0) / 2)
+    assert agg["b"] == pytest.approx((0.5 + 1.0) / 2)
+    assert agg["c"] == pytest.approx((0.0 + 0.0) / 2), "absence counts as 0.0, not skipped"
