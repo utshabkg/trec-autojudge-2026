@@ -21,8 +21,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # 3.10 is the oldest version pyproject.toml supports, and 3.12 is what the
+        # container runs, which is what actually executes on TIRA. The starter kit
+        # tested every version from 3.10 to 3.14 because the framework supports
+        # them all, but for a judge that ships in a 3.12 image the extra three cost
+        # disk and inbox without covering anything the submission depends on.
+        python-version: ["3.10", "3.12"]
     steps:
+      # Without this, runners intermittently died with "No space left on device"
+      # straight after installing dependencies, before any test ran: torch,
+      # transformers and the encoder weights, once per matrix entry, do not always
+      # fit beside the runner's preinstalled toolchains. Free space varies between
+      # runners, which is why it failed on some versions and some commits and not
+      # others, including a documentation-only commit.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
