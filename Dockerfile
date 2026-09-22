@@ -41,8 +41,15 @@ WORKDIR /auto-judge
 # CPU torch explicitly, and first: resolving `torch` from PyPI pulls a CUDA build
 # with several GB of nvidia-* wheels that a TIRA worker cannot use, and doing it
 # before the project install stops sentence-transformers dragging it back in.
+#
+# Pinned to 2.11.0, the version the local and compute-node runs use, so the
+# container is not a different torch from the one our submitted numbers came from.
+# It was unpinned and resolved 2.14.0. Note the two submissions still cannot be
+# bit-identical: the data submission is produced on a GPU with an fp16
+# cross-encoder, and this image runs on CPU in fp32. Pinning removes the one
+# difference that costs nothing to remove.
 RUN uv pip install --python /venv312/bin/python \
-        torch --index-url https://download.pytorch.org/whl/cpu \
+        "torch==2.11.0" --index-url https://download.pytorch.org/whl/cpu \
  && uv pip install --python /venv312/bin/python -e '.[all]'
 
 # Prove the import chain at build time rather than discovering it half way
