@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-20 (data downloaded, validation plan revised).** This file is the single running record of the
+**Last updated: 2026-09-22 (moved to a compute node, pilots running).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -268,9 +268,11 @@ The reasoning behind each choice, which is the part hardest to reconstruct later
 | `Dockerfile` | complete, builds and runs offline |
 | CI: tests on Python 3.10 to 3.14 | passing |
 | CI: TIRA code submission | **dry run green, tira-verified** |
-| Data downloaded | **blocked** |
-| Pilot validation | **blocked on data** |
-| Test-set run and upload | **blocked on data** |
+| Data downloaded | done, 4.8 GiB, on the main PC and the compute node |
+| Compute node (machine 54) | set up: env, models, data, 47 tests passing |
+| Pilot runs | **running** on rag25-gen, ragtime25, dragun-repgen |
+| TIRA pilot upload, the real correlation | next |
+| Test-set run and upload | after the pilot result |
 
 Unit tests run against a stub encoder with no GPU, no network and no model
 weights, because `tira-cli` runs pytest on the submitting machine and the weights
@@ -392,6 +394,48 @@ everything a repo publishes, including ONNX exports and a `.bin` duplicate of
 every `.safetensors`. `cross-encoder/nli-deberta-v3-base` alone ships 4.8 GiB of
 ONNX variants. Restricting to safetensors gives 3.2 GiB, confirmed as `3.3G` in
 the built image.
+
+### Performance, measured on the rag25-gen pilot
+
+The first real pilot run made a shared 120-core machine unusable, load average 123,
+while making slow progress. The work itself was not large. The clustering issued
+one matrix-vector product per sentence, about 300,000 of them per dataset, and
+OpenBLAS defaults to 64 threads on that machine, so each product launched a
+60-plus thread parallel region for a few milliseconds of arithmetic. Nearly all the
+time went into starting and joining threads.
+
+Two fixes: thread pools capped at 8 (through `threadpoolctl`, because OpenBLAS
+ignores environment variables set after import), and clustering batched into one
+matrix product per block of 512 sentences. The batched version is **identical**
+to the sequential one, not approximately so: a test asserts equality of every
+cluster id, leader, team set, run set, size and assignment across block sizes 1 to
+1000.
+
+| | before | after |
+|---|---|---|
+| pooling, per topic | 13.0 s | **1.04 s** |
+| load average during the run | 123 | **1.5** |
+| full judge run, 10 topics of rag25-gen | not measured | 85 s |
+
+### First signal on real data, rag25-gen, first 10 topics, truth-free
+
+rag25 is a pilot, so it is unrestricted under the data policy and can be inspected
+freely.
+
+| measure | distinct values over 51 runs | Kendall vs LENGTH |
+|---|---|---|
+| `NCOV` | 49 | 0.188 |
+| `NPREC` | 49 | -0.258 |
+| `NF1` | 50 | 0.070 |
+| `NF1_RANK` | 50 | 0.101 |
+| `CITE` | 50 | 0.023 |
+
+Every measure separates nearly every system, so ties will not decide the
+`tauap_b` ordering, and none is a restatement of length. `NPREC` runs slightly
+against length, which is what it is designed to do: longer answers carry more
+uncorroborated padding. **What this does not show is agreement with human
+assessors.** Carrying information beyond length is necessary, not sufficient. The
+TIRA upload is what answers that.
 
 ### Calibration, on the synthetic kiddie set only
 
@@ -573,6 +617,27 @@ CUDA 12.9, which caps torch at `2.11.0+cu128` and vLLM at 0.13.0. Note that
 initialisation has failed, so GPU availability must be verified with a real
 operation.
 
+**The main machine's GPU driver wedged on 2026-09-20.** Every process touching
+the GPU blocked in uninterruptible sleep on `os_acquire_rwlock_write`, a lock
+inside the NVIDIA kernel module. That included the neighbouring vLLM job's workers,
+28 `nvidia-smi` calls, several of the owner's own `side-paper-pypots` workers, and
+`gnome-shell`, which is why the desktop froze. Processes in that state ignore
+`SIGKILL`, so it cannot be cleared from a user account and needs a reboot or a root
+GPU reset. Two lessons we now apply: never poll `nvidia-smi` on a machine whose
+driver may be hung, since each call joins the pile, and gate any GPU run on a
+short-timeout probe.
+
+**Compute moved to a second machine ("54"):** one idle RTX 6000 Ada with 48 GB,
+64 cores, 125 GB RAM, driver 560.35 (CUDA 12.6). The environment there is built
+with miniforge rather than anaconda, because anaconda's default channels require a
+Terms of Service acceptance and conda-forge does not. Versions match the main PC
+exactly: torch 2.11.0 (the cu126 build, to suit that driver), transformers 4.57.6,
+sentence-transformers 5.7.0. The main PC remains the single source of truth for
+code and git, so no credentials are copied to the node.
+`scripts/sync_remote.sh` pushes code and data out and pulls results back, and
+`scripts/run_on_node.sh` runs jobs detached so a dropped connection cannot kill
+them.
+
 **Data handling.** The policy permits inspecting report content only for the first
 ten topics of each dataset's topics file, in file order, plus structural
 diagnostics on any topic. Our mined nugget bank is response-derived and therefore
@@ -585,6 +650,18 @@ team can gain from its own runs.
 ---
 
 ## 8. Progress log
+
+### 2026-09-22
+
+- The main machine's GPU driver wedged (section 7). Moved compute to machine 54.
+- Built the environment there with miniforge, matching the main PC's versions
+  exactly, fetched the models, pushed 5.1 GiB of data.
+- Validated the performance commit that had been written while the main machine was
+  hung: 47 passed, 2 xfailed on the node.
+- Measured the fix on real data: pooling 12 times faster, load 1.5 instead of 123.
+- First truth-free signal on rag25-gen: all five measures separate the systems and
+  none is length in disguise.
+- Launched full runs on three pilots: rag25-gen, ragtime25, dragun-repgen.
 
 ### 2026-09-19 and 20
 
