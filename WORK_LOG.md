@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (both judges scored on three pilots, test-set runs started).** This file is the single running record of the
+**Last updated: 2026-09-22 (official data submission lodged on both test sets).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -314,8 +314,12 @@ The reasoning behind each choice, which is the part hardest to reconstruct later
 | Data downloaded | done, 4.8 GiB, on the main PC and the compute node |
 | Compute node (machine 54) | set up: env, models, data, 47 tests passing |
 | Pilot runs | **running** on rag25-gen, ragtime25, dragun-repgen |
-| TIRA pilot upload, the real correlation | next |
-| Test-set run and upload | after the pilot result |
+| TIRA pilot uploads, the real correlation | done, both judges on three pilots |
+| **Data submission, NuggetRecall, rag26 and ragtime26** | **lodged 2026-09-22** |
+| Data submission, Corroborate | next, second submission |
+| Code submission, Corroborate | dry run green, not yet submitted |
+| Code submission, NuggetRecall | dry run in progress |
+| NuggetRecall tested on the organizers' models | next |
 
 Unit tests run against a stub encoder with no GPU, no network and no model
 weights, because `tira-cli` runs pytest on the submitting machine and the weights
@@ -800,6 +804,20 @@ team can gain from its own runs.
 - Fixed intermittent CI failures, which were the runner running out of disk rather
   than anything in the code, and trimmed the test matrix to 3.10 and 3.12.
 - Started NuggetRecall on the rag26 and ragtime26 test sets.
+- **Lodged the official data submission**: NuggetRecall on both test sets, system
+  `nuggetrecall-best`, model Qwen3-30B-A3B-Instruct-2507 (FP8). rag26 took 30 minutes
+  and ragtime26 14, with zero failed calls, zero unparsable judgments and zero
+  fallback answer keys. Both are complete, every one of the 83 and 49 runs over all
+  119 and 103 topics, which the upload guard checked before anything was sent,
+  because a partial submission is rejected. The judgment counts reconcile exactly:
+  rag26 made 9,838 calls for 9,877 reports, and the 39-report gap is the 39 reports
+  the schema probe found with no answer text, which are scored zero without a call.
+- On the test sets only the upload guard was run, never the length diagnostics used
+  on the pilots, because counting words reads report text, and outside the
+  permitted window that is restricted.
+- Found and fixed a code-submission bug that would have been silent: the workflow
+  never forwarded the LLM endpoint names, so a NuggetRecall code submission could
+  never have received a model on TIRA.
 
 ### 2026-09-19 and 20
 
