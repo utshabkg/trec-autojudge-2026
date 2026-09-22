@@ -245,7 +245,11 @@ def test_unparsable_after_all_retries_scores_zero_not_dropped(monkeypatch):
     monkeypatch.setattr(J, "_llm_backend", lambda cfg: object())
     _, lb = _run_judge([_report("r1", "a", ["Bees collect nectar."])], [TOPIC])
     row = next(e.values for e in lb.entries if e.run_id == "r1" and e.topic_id == "t1")
-    assert all(row[m] == 0.0 for m in MEASURE_NAMES)
+    recall = [m for m in MEASURE_NAMES if m != "NR_RANK"]
+    assert all(row[m] == 0.0 for m in recall)
+    # NR_RANK is a rank, not a recall. One run on a topic carries no ranking
+    # information, so 0.5 is right and 0.0 would be a claim we cannot make.
+    assert row["NR_RANK"] == 0.5
 
 
 def test_prompts_are_byte_identical_across_runs(fake):
@@ -529,3 +533,56 @@ def test_the_ci_stub_endpoint_speaks_what_our_parsers_read():
     # Different answers must score differently, or the leaderboard is constant
     # and check_upload_dir would refuse it for the stub's sake, not the judge's.
     assert ask("Bees fan their wings to evaporate water from nectar.") != ask("Bees collect nectar.")
+
+
+# ------------------------------------------------------------- NR_RANK
+
+
+def test_the_two_percentile_helpers_stay_identical():
+    """measures.py duplicates Corroborate's helper to avoid importing torch.
+
+    Duplication is only safe if it cannot drift, so pin the two together.
+    """
+    from judges.corroborate.scoring import within_topic_percentile as theirs
+    from judges.nuggetrecall.measures import within_topic_percentile as ours
+
+    for scores in ({"a": 0.9, "b": 0.5, "c": 0.1},
+                   {"a": 0.5, "b": 0.5, "c": 0.5},
+                   {"a": 1.0},
+                   {"a": 0.0, "b": 1.0},
+                   {"a": 0.3, "b": 0.3, "c": 0.9, "d": 0.0}):
+        assert ours(scores) == theirs(scores), scores
+
+
+def test_nr_rank_removes_topic_difficulty(monkeypatch):
+    """The reason NR_RANK exists, as a worked example.
+
+    Two topics, one easy (everyone scores high) and one hard. Run A wins the hard
+    topic, run B wins the easy one by a hair. Averaging the raw recall lets the
+    easy topic dominate; ranking within a topic does not.
+    """
+    from judges.nuggetrecall.measures import within_topic_percentile
+
+    topics = {
+        "easy": {"A": 0.30, "B": 0.95},   # B wins by a mile
+        "hard1": {"A": 0.25, "B": 0.20},  # A wins narrowly
+        "hard2": {"A": 0.22, "B": 0.18},  # A wins narrowly
+    }
+    mean = {r: sum(t[r] for t in topics.values()) / len(topics) for r in ("A", "B")}
+    pct = {k: within_topic_percentile(v) for k, v in topics.items()}
+    rank = {r: sum(p[r] for p in pct.values()) / len(pct) for r in ("A", "B")}
+    assert mean["B"] > mean["A"], "the easy topic must dominate the raw mean"
+    assert rank["A"] > rank["B"], "A wins two topics of three, so it must win on rank"
+
+
+def test_nr_rank_is_emitted_for_every_row(fake):
+    reports = [_report("r1", "a", ["Bees collect nectar."]),
+               _report("r2", "b", ["Bees add enzymes to nectar."]),
+               _report("r3", "c", [])]
+    _, lb = _run_judge(reports, [TOPIC])
+    rows = {e.run_id: e.values for e in lb.entries if e.topic_id == "t1"}
+    assert set(rows) == {"r1", "r2", "r3"}
+    assert all("NR_RANK" in v for v in rows.values())
+    # The empty report scored zero, so it must rank last.
+    assert rows["r3"]["NR_RANK"] == min(v["NR_RANK"] for v in rows.values())
+    assert all(0.0 <= v["NR_RANK"] <= 1.0 for v in rows.values())

@@ -8,7 +8,11 @@ each is a plausible match for a truth measure and Max() over them is legitimate.
 
 from autojudge_base import LeaderboardSpec, MeasureSpec
 
-MEASURE_NAMES = ("NR_VITAL", "NR_ALL", "NR_VITAL_STRICT", "NR_WEIGHTED")
+MEASURE_NAMES = ("NR_VITAL", "NR_ALL", "NR_VITAL_STRICT", "NR_WEIGHTED", "NR_RANK")
+
+# The measure NR_RANK is built from. Not a separate judgment, just a different
+# way of aggregating the one we already make.
+RANK_BASE = "NR_VITAL"
 
 NUGGETRECALL_SPEC = LeaderboardSpec(measures=(
     MeasureSpec("NR_VITAL", float, description=(
@@ -24,7 +28,40 @@ NUGGETRECALL_SPEC = LeaderboardSpec(measures=(
     MeasureSpec("NR_WEIGHTED", float, description=(
         "Importance-weighted recall over all facts, vital weight 1 and okay weight "
         "0.5, support 1 and partial 0.5. 0 to 1, higher is better.")),
+    MeasureSpec("NR_RANK", float, description=(
+        "NR_VITAL re-expressed as the fraction of other runs this run beats on the "
+        "same topic, averaged over topics. Same judgments, different aggregation: "
+        "it removes topic difficulty, which is the largest source of variance when "
+        "ordering systems. 0 to 1, higher is better.")),
 ))
+
+
+def within_topic_percentile(scores: dict) -> dict:
+    """Fraction of other runs this run beats on this topic, ties split evenly.
+
+    With R runs the result is in [0, 1] where 0 is worst and 1 is best. The
+    orientation matters: the framework fills a missing cell with 0.0, which is the
+    right "worst" for a percentile but would wrongly mean "average" for a z-score.
+    That is why this is not a z-score.
+
+    A single-run topic carries no ranking information, so it returns 0.5 rather
+    than inventing a win or a loss.
+
+    Deliberately duplicated from judges/corroborate/scoring.py rather than
+    imported: that module pulls in numpy, torch and sentence-transformers, and
+    this judge needs none of them. A test asserts the two stay identical.
+    """
+    runs = sorted(scores)
+    n = len(runs)
+    if n <= 1:
+        return {r: 0.5 for r in runs}
+    out = {}
+    for r in runs:
+        s = scores[r]
+        less = sum(1 for o in runs if o != r and scores[o] < s)
+        equal = sum(1 for o in runs if o != r and scores[o] == s)
+        out[r] = (less + 0.5 * equal) / (n - 1)
+    return out
 
 
 def zero_row() -> dict:

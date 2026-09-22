@@ -47,7 +47,13 @@ except ImportError:
     def tqdm(iterable, *args, **kwargs):
         return iterable
 
-from .measures import MEASURE_NAMES, NUGGETRECALL_SPEC, zero_row
+from .measures import (
+    MEASURE_NAMES,
+    NUGGETRECALL_SPEC,
+    RANK_BASE,
+    within_topic_percentile,
+    zero_row,
+)
 from .prompts import (
     Nugget,
     generation_messages,
@@ -488,10 +494,32 @@ class NuggetRecallJudge:
             for run, tid, _, _ in pending:
                 results[(run, tid)] = zero_row()
 
+        # NR_RANK, added last because it is the only measure that needs every
+        # other run's score for the same topic.
+        #
+        # Measured on the pilots and the reason this exists: on rag25-gen the same
+        # judgments aggregated this way score 0.809 max Kendall against 0.788 for
+        # the plain mean, and better on tauap_b and Min(Kendall) too. Averaging a
+        # recall fraction over topics lets an easy topic, where everyone scores
+        # high, count as much as a discriminating one. A within-topic rank removes
+        # that. On ragtime25 it is slightly worse than the mean (0.726 against
+        # 0.739), which costs nothing: the reported score is the max over our
+        # measures, so the mean simply wins there instead.
+        rows = {}
+        for r in reports:
+            key = (str(r.metadata.run_id), str(r.metadata.topic_id))
+            rows[key] = dict(results.get(key, zero_row()))
+        by_topic = {}
+        for (run_id, topic_id), values in rows.items():
+            by_topic.setdefault(topic_id, {})[run_id] = values[RANK_BASE]
+        for topic_id, scores in by_topic.items():
+            for run_id, pct in within_topic_percentile(scores).items():
+                rows[(run_id, topic_id)]["NR_RANK"] = pct
+
         builder = LeaderboardBuilder(NUGGETRECALL_SPEC)
         for r in reports:
             key = (str(r.metadata.run_id), str(r.metadata.topic_id))
-            builder.add(run_id=key[0], topic_id=key[1], values=results.get(key, zero_row()))
+            builder.add(run_id=key[0], topic_id=key[1], values=rows[key])
         leaderboard = builder.build(expected_topic_ids=expected, on_missing=on_missing_evals)
         LeaderboardVerification(leaderboard, on_missing=on_missing_evals, warn=True).all()
         log.info("leaderboard: %d reports judged, %d unparsable", len(todo), len(pending))
