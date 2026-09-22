@@ -112,6 +112,21 @@ jobs:
         run: tira-cli verify-installation --task trec-auto-judge --team "${{ vars.TIRA_TEAM }}"
 
       - name: Code submission
+        # tira-cli refuses to forward a variable that is unset where it runs
+        # ("Some environment variables are missing and can not be forwarded"),
+        # because the dry run and the pre-upload check both execute the container
+        # and pass real values in. A real submission records only the names, and
+        # the organizers inject their own values on TIRA.
+        #
+        # So these are placeholders for the local test only. The runner has no
+        # model to reach, and that test runs without network anyway, so the
+        # endpoint is a closed port, which NuggetRecall handles by falling back.
+        # The model name is the organizers' exact id, so a warm prompt cache built
+        # under that name would replay here if one is ever mounted.
+        env:
+          OPENAI_BASE_URL: http://127.0.0.1:9/v1
+          OPENAI_MODEL: Qwen/Qwen2.5-7B-Instruct
+          OPENAI_API_KEY: EMPTY
         run: |
           set -euo pipefail
           EXTRA=()
