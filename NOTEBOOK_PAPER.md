@@ -97,9 +97,12 @@ pilot's leaderboard.
 
 | Pilot | Answer type | Corroborate | NuggetRecall | Field median | Best entry |
 |---|---|---|---|---|---|
-| rag25-gen | short RAG answers | 0.323 (87 of 92) | **0.788 (45 of 92)** | 0.787 | 0.862 |
-| ragtime25 | long reports | 0.691 (59 of 96) | **0.739 (32 of 96)** | 0.724 | 0.802 |
+| rag25-gen | short RAG answers | 0.323 (92 of 98) | **0.801 (42 of 98)** | 0.787 | 0.862 |
+| ragtime25 | long reports | 0.691 (67 of 103) | **0.739 (36 of 103)** | 0.726 | 0.802 |
 | dragun-repgen | reports about a news article | **0.755 (7 of 61)** | 0.141 (57 of 61) | 0.650 | 0.821 |
+
+The NuggetRecall column is the five-measure judge. Ranks move as other teams upload,
+so they are read on the date shown.
 
 rag25-gen is the pilot most like rag26, and ragtime25 the one most like ragtime26.
 NuggetRecall wins on both, so it is our main submission.
@@ -113,7 +116,10 @@ NuggetRecall wins on both, so it is our main submission.
   the container no LLM to call, so the judge fell back, produced an all-zero
   leaderboard, and every check still passed. The container now calls a stub endpoint
   and the job fails if the leaderboard does not separate systems.
-- **[pending]** the real code submissions, and Corroborate as a second data submission.
+- **Second data submission **[done]**:** `nuggetrecall-rank`, the same judge with a
+  fifth measure, on both test sets. It reuses the judgments already submitted, so
+  the other four measures are byte identical and the score cannot go down.
+- **[pending]** the real code submissions, and Corroborate as a third data submission.
 
 ---
 
@@ -135,7 +141,7 @@ NuggetRecall wins on both, so it is our main submission.
    rag25-gen. A judge that looks good on RAGTIME may just be rewarding long answers, so
    we checked that none of our measures is mostly length.
 
-4. **A bigger LLM makes a better judge, but a small one still works.** On rag25-gen,
+4. **Model size matters less than we expected, once the harness is right.** On rag25-gen,
    the same NuggetRecall judge scores **0.788 with Qwen3-30B** and **0.654 with
    Qwen2.5-7B**, a drop of about 0.13 and 20 ranking places. The smaller model
    follows the output format just as reliably (no failed or unreadable answers), but
@@ -151,7 +157,10 @@ NuggetRecall wins on both, so it is our main submission.
    The score alone gives no hint of this. What caught it was a check we run before
    every upload, which refuses any leaderboard whose measures do not vary between
    systems. Anyone building an LLM judge should have that check and should not trust
-   a low score to mean a weak judge.
+   a low score to mean a weak judge. After raising the timeout and turning the batch
+   breaker off, the same configuration scores **0.783**, which is within 0.005 of the
+   much larger model. This mattered beyond the pilot: the organizers re-run submitted
+   code against gpt-oss-20b, so our code submission would have scored zero.
 
 6. **Reproducibility checks can be satisfied by two runs that both do nothing.** TIRA
    proves an LLM judge is reproducible by re-running the container with the endpoint
@@ -172,7 +181,16 @@ NuggetRecall wins on both, so it is our main submission.
    ranked systems partly by brevity, and answer length correlates +0.558 with human
    truth on ragtime25, so the submitted score could have gone negative.
 
-8. **A threshold on a cosine is meaningless without knowing the encoder's scale, and
+8. **How you average matters as much as what you measure.** Our judge scored each
+   response for how many key facts it covered, then averaged that over topics. That
+   lets an easy topic, where every system scores high, count as much as one that
+   actually separates systems. Ranking systems within each topic first, then
+   averaging the ranks, uses the identical judgments and scores **0.801** on
+   rag25-gen against 0.788, and is better on the top-weighted measure too. It costs
+   no extra LLM calls. On the other pilot it is slightly worse, which costs nothing,
+   because the official score is the best of our measures, so we emit both.
+
+9. **A threshold on a cosine is meaningless without knowing the encoder's scale, and
    a parameter sweep will not tell you.** Corroborate filters pooled claims by how
    specific they are to the topic, measured as cosine similarity under
    `bge-base-en-v1.5`. We set that floor to 0.15 and swept it over 0.0 to 0.20. Then
@@ -190,6 +208,24 @@ NuggetRecall wins on both, so it is our main submission.
    **[pending]** a re-run, but the mechanism fits. The general guard we added is
    worth more than the number: warn whenever a filter keeps everything or nothing,
    and report the range actually observed.
+
+---
+
+## 5b. A caution on every number above
+
+Our judge is not deterministic run to run. vLLM does not produce bit-identical
+output across different batch compositions, so the same configuration re-run gives
+slightly different judgments. We measured the size of this by accident: re-running
+NuggetRecall on ragtime25 with nothing changed except an **added** measure moved the
+score by -0.010, which adding a measure cannot do, because the official score is the
+best of our measures.
+
+So roughly 0.01 Kendall is noise. We do not treat differences below about 0.02 as
+real, and we withdrew one earlier result on that basis: combining the two judges
+appeared to gain +0.012 on ragtime25, which is inside the noise, so we do not claim
+it. The gain from rank aggregation (+0.013 on the five-measure judge, +0.021 in an
+isolated re-aggregation of the identical leaderboard) sits at or above that line and
+is consistent in direction, which is why we do claim that one.
 
 ---
 

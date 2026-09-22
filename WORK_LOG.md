@@ -913,6 +913,53 @@ team can gain from its own runs.
   signal, and adversarial verification tuned that strictly is a filter for
   precision at a heavy cost in recall.
 
+- **NR_RANK, and the measurement that produced it.** Fusing the two judges by
+  within-topic rank looked like a small win on ragtime25 (0.751 against 0.739), so
+  we ran the control that separates "fusion helped" from "rank aggregation helped":
+  fuse at weight 1.0, which is pure NuggetRecall re-aggregated. That scored 0.809 on
+  rag25-gen against 0.788, better on all three reported numbers, and 19 places
+  higher. The gain was never fusion. It was the aggregation. Added as a fifth
+  measure, NR_RANK, costing no LLM calls.
+- **Measured our own noise floor, by accident.** Re-running NuggetRecall on ragtime25
+  with nothing changed but an added measure moved max Kendall by -0.010. Adding a
+  measure cannot lower a maximum, so that is run-to-run variance: vLLM is not
+  bitwise deterministic across batch compositions. About 0.01 Kendall. We withdrew
+  the fusion result on that basis, since +0.012 is inside it.
+- **Derived NR_RANK onto the lodged test-set submissions rather than re-judging**,
+  so the judgments already submitted are reused exactly and the noise above cannot
+  bite. Verified bit for bit against the judge's own output: strip NR_RANK from the
+  rag25-gen leaderboard, recompute, and all 51 aggregates agree to twelve decimal
+  places. That took two attempts, because the two halves use different conventions.
+  Per topic, rank over the runs present on that topic, since leaderboards are ragged
+  (51 runs on most rag25-gen topics, 50 on twenty, 48 on one). For the aggregate,
+  divide by every topic and count an absence as 0.0, which is what
+  LeaderboardBuilder does under fix_aggregate. Getting it backwards moved aggregates
+  by up to 0.047, several times the noise floor, so it would have read as real.
+  Uploaded to both test sets as `nuggetrecall-rank`, alongside the existing
+  submission rather than replacing it.
+- One provenance gap, recorded deliberately: the derived upload carries only the
+  leaderboard, so TIRA's Model column is empty for it. The judgments are the same
+  Qwen3-30B-A3B-Instruct-2507 (FP8) ones as `nuggetrecall-best`. We did not
+  re-upload to fix a metadata field, because TREC results cannot be withdrawn and a
+  duplicate entry on an official test set is worse than a blank column.
+- **Rewrote README.md**, which the organizers read in place of a run description. It
+  covered only Corroborate, did not mention NuggetRecall at all, still said "the
+  submitted configuration makes no LLM calls", left Validation as a TODO, and
+  claimed a `scrub-log.jsonl` that does not exist. We never needed `scrub`, because
+  every bug reproduced on a pilot or on kiddie.
+- **Two process failures worth recording, both mine.** I killed a running job, read
+  `pgrep -c` output of "2" as success when it meant two processes were still alive,
+  and launched a second judge beside the first. Both wrote the same log and the same
+  output directory while I restarted vLLM under them, producing a leaderboard that
+  was part one model and part another. Nothing was uploaded. `run_on_node.sh` now
+  refuses to launch beside a live run and has a real `stop` that kills the parent
+  loop first, because killing the python child only advances the loop to the next
+  dataset and looks like success. Both list processes instead of counting them.
+  Separately, the code push's `--delete` removed the node's `fusion/` directory,
+  three built leaderboards, minutes before upload. Same trap that once took
+  `vllm.log`. Excluded now, with a comment saying to add any new node-written path
+  in the same commit that creates it.
+
 ### 2026-09-19 and 20
 
 Project started from nothing.
