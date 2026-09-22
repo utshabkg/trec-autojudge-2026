@@ -520,6 +520,24 @@ least part of it is the truth itself.
 |---|---|---|---|---|
 | Qwen3-30B-A3B-Instruct-2507 (FP8) | 0.788 | 0.621 | +0.721 | 45 of 93 |
 | Qwen2.5-7B-Instruct | 0.654 | 0.479 | +0.480 | 65 of 93 |
+| gpt-oss-20b, stock batch settings | 0.000 | -0.500 | 0.000 | 93 of 94 |
+
+The gpt-oss row is a harness failure, not a judgment of the model, and it is the
+most useful thing measured today. Every one of the 5,302 judgments was lost, so all
+four measures came out constant and the leaderboard carried no ranking at all. Two
+minima-llm defaults caused it. `TIMEOUT_S` is 60 seconds, which a reasoning model
+with a 4096-token reply budget and 32 outstanding requests does not meet on a long
+judge prompt. `BATCH_MAX_FAILURES` is 25, and it aborts the *whole* batch rather
+than the failing calls, so 26 timeouts out of 5,302 destroyed all of them. All three
+retry attempts died the same way. The timeout is now 900 seconds and the breaker is
+off, because our own handling of a failed call (retry, then score zero, and count
+both in the log) is strictly better than losing the batch. Neither setting touches a
+cache key, so TIRA's replay check is unaffected.
+
+This was worth finding before the deadline rather than after it: the organizers run
+submitted code against gpt-oss-20b, so the code submission would have scored zero.
+The run also showed that the upload guard works. It refused the directory, naming
+all four measures as constant, which is exactly the silent-zero it exists to catch.
 
 The 7B model had zero failed calls and zero unreadable judgments over 5,302 calls,
 so format compliance is not the problem. On kiddie it ranked the worst run at 38%

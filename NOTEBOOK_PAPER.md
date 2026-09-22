@@ -140,7 +140,17 @@ NuggetRecall wins on both, so it is our main submission.
    follows the output format just as reliably (no failed or unreadable answers), but
    it judges less accurately, mostly by giving partial credit too freely. Even so it
    stays far above Corroborate (0.323) and the length shortcut (0.152).
-   **[pending]** gpt-oss-20b.
+
+5. **An LLM judge can fail silently and completely, and the failure looks like a bad
+   judge.** Running the same judge on gpt-oss-20b scored **0.000**, last of 94. The
+   model was not at fault. The LLM client times a call out after 60 seconds, which a
+   reasoning model does not always meet, and it then abandons the entire batch once
+   25 calls have failed. So 26 slow calls out of 5,302 destroyed all 5,302, every
+   measure came out the same for every system, and the leaderboard ranked nothing.
+   The score alone gives no hint of this. What caught it was a check we run before
+   every upload, which refuses any leaderboard whose measures do not vary between
+   systems. Anyone building an LLM judge should have that check and should not trust
+   a low score to mean a weak judge.
 
 ---
 
