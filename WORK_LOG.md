@@ -512,6 +512,27 @@ the earlier reading below, which attributed Corroborate's negative Min on ragtim
 to `CITE` alone: on rag25-gen `CITE` is still the likely culprit, but on ragtime25 at
 least part of it is the truth itself.
 
+### NuggetRecall across judge models, rag25-gen
+
+**Measured**, TIRA, 2026-09-22. Same judge code and prompts, only the model changes.
+
+| model | Max(K) | Max(Tauap B) | Min(K) | rank |
+|---|---|---|---|---|
+| Qwen3-30B-A3B-Instruct-2507 (FP8) | 0.788 | 0.621 | +0.721 | 45 of 93 |
+| Qwen2.5-7B-Instruct | 0.654 | 0.479 | +0.480 | 65 of 93 |
+
+The 7B model had zero failed calls and zero unreadable judgments over 5,302 calls,
+so format compliance is not the problem. On kiddie it ranked the worst run at 38%
+recall where the 30B model gave 0%, and swapped the order of the top runs, which
+points to over-generous partial credit. This is also the realistic preview of the
+code-submission score on RAG-style data, since the organizers run submitted code
+with Qwen2.5-7B-Instruct. Run time 906 s against 672 s for the 30B model, because
+the 7B run happened at lower client concurrency before that was raised.
+
+A possible improvement that would not spend held-out truth: use the 30B model's
+judgments as a silver standard and measure how often the 7B model agrees with it
+under a revised prompt. Not yet tried.
+
 ### The first real scores, from TIRA, against held-out human assessments
 
 **Measured.** The `best` configuration run on three full pilots, uploaded to TIRA,

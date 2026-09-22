@@ -81,8 +81,8 @@ happened to write.
 - **Validation:** we ran both judges on three pilot datasets from 2025, uploaded the
   results, and read back the organizers' scores.
 - **LLM for NuggetRecall:** Qwen3-30B-A3B-Instruct (FP8), served locally with vLLM on
-  one RTX 6000 Ada GPU. **[pending]** The organizers will re-run our code with
-  Qwen2.5-7B-Instruct and gpt-oss-20b, and we are testing both.
+  one RTX 6000 Ada GPU. The organizers re-run submitted code with
+  Qwen2.5-7B-Instruct and gpt-oss-20b, so we also tested NuggetRecall on those.
 - **Embeddings for Corroborate:** bge-base-en-v1.5, plus nli-deberta-v3-base to decide
   borderline matches.
 
@@ -131,8 +131,13 @@ NuggetRecall wins on both, so it is our main submission.
    rag25-gen. A judge that looks good on RAGTIME may just be rewarding long answers, so
    we checked that none of our measures is mostly length.
 
-4. **[pending]** How much judge quality depends on the size of the LLM, from running
-   NuggetRecall with the organizers' smaller models.
+4. **A bigger LLM makes a better judge, but a small one still works.** On rag25-gen,
+   the same NuggetRecall judge scores **0.788 with Qwen3-30B** and **0.654 with
+   Qwen2.5-7B**, a drop of about 0.13 and 20 ranking places. The smaller model
+   follows the output format just as reliably (no failed or unreadable answers), but
+   it judges less accurately, mostly by giving partial credit too freely. Even so it
+   stays far above Corroborate (0.323) and the length shortcut (0.152).
+   **[pending]** gpt-oss-20b.
 
 ---
 
