@@ -28,13 +28,19 @@ settings:
   temperature: 0.0
   retries: 2
 
+# Reply budgets are generous on purpose. The organizers run submitted code with
+# gpt-oss-20b, a reasoning model that spends tokens thinking before it answers. At
+# 1024 and 1536, 11 of 33 of its replies on kiddie hit the limit before writing a
+# single label. A higher cap costs nothing for the Qwen models, which stop well
+# short of it (vLLM recorded zero cut-offs for Qwen3-30B), so their output is
+# unchanged.
 nugget_settings:
   min_nuggets: 8
   max_nuggets: 20
-  max_tokens_generate: 1536
+  max_tokens_generate: 4096
 
 judge_settings:
-  max_tokens_judge: 1024
+  max_tokens_judge: 4096
   # Caps pathological reports. rag26 is limited to 1024 words, roughly 7,000
   # characters, so this only ever bites on ragtime-style long reports.
   max_answer_chars: 40000
