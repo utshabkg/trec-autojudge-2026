@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (moved to a compute node, pilots running).** This file is the single running record of the
+**Last updated: 2026-09-22 (first real scores from TIRA on three pilots).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -416,6 +416,48 @@ cluster id, leader, team set, run set, size and assignment across block sizes 1 
 | pooling, per topic | 13.0 s | **1.04 s** |
 | load average during the run | 123 | **1.5** |
 | full judge run, 10 topics of rag25-gen | not measured | 85 s |
+
+### The first real scores, from TIRA, against held-out human assessments
+
+**Measured.** The `best` configuration run on three full pilots, uploaded to TIRA,
+and scored by the organizers' own evaluator. Ranks are against every entry on that
+pilot's public leaderboard at the time of reading.
+
+| pilot | task | our Max (Kendall) | Max (Tauap B) | Min (Kendall) | rank | field median |
+|---|---|---|---|---|---|---|
+| `dragun-repgen` | report generation | **0.755** | 0.608 | 0.500 | **7 of 60** | 0.650 |
+| `ragtime25` | report generation | 0.691 | 0.574 | -0.358 | 58 of 95 | 0.724 |
+| `rag25-gen` | short RAG answers | 0.323 | 0.278 | -0.188 | 86 of 91 | 0.787 |
+
+**The result is split by task, and the split is the finding.** On long-form report
+generation the method is competitive, top 12% on dragun and just under the median
+on ragtime25. On short RAG answers it is near the bottom. That maps directly onto
+our two targets: ragtime26 is report generation and rag26 is RAG generation.
+
+A plausible mechanism, not yet tested: short answers have few sentences, so the
+pool yields few clusters and coverage of the consensus is a thin signal, while what
+separates good short answers from mediocre ones is precise facts that most teams
+did not state, which a consensus bank by construction cannot reward. Long reports
+give the consensus much more to be measured against. This is the "consensus
+regresses everyone to the median" risk identified at design time, and it appears
+to bite in exactly the regime where answers are short.
+
+**Why Min goes negative.** TIRA reports only the maximum and minimum across our
+five measures, not each one, so the offending measure is inferred rather than
+measured. Correlations between our own measures, which need no truth:
+
+| pilot | Min (Kendall) | how `CITE` relates to the other four |
+|---|---|---|
+| `dragun-repgen` | +0.500 | moves with them, 0.48 to 0.54 |
+| `ragtime25` | -0.358 | weakly, 0.24 to 0.38 |
+| `rag25-gen` | -0.188 | not at all, -0.10 to -0.03 |
+
+Where every measure scored positive, all five move together. Where Min is negative,
+`CITE` is the one that has detached from the coverage cluster. So citation support
+is almost certainly what drags Min below zero. It is also plausible on its face: the
+truth measure is nugget *recall*, and a system that cites conservatively can write
+fewer claims. Dropping `CITE` should lift Min. It will not lift Max, and on rag25-gen
+Max is the problem.
 
 ### First signal on real data, rag25-gen, first 10 topics, truth-free
 
