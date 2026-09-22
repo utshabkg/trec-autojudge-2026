@@ -6,6 +6,7 @@
 #   bash scripts/run_on_node.sh launch --judge nuggetrecall rag25-gen
 #   bash scripts/run_on_node.sh launch --judge nuggetrecall --out output-qwen2.5-7b rag25-gen
 #   bash scripts/run_on_node.sh status
+#   bash scripts/run_on_node.sh stop
 #
 # --out sets the output root. Use a separate one whenever the model changes: the
 # default root holds the submitted results, and the judge REUSES an existing
@@ -41,8 +42,44 @@ launch)
     done
     [ $# -gt 0 ] || { echo "name at least one dataset"; exit 1; }
     [ -f "judges/$JUDGE/workflow.yml" ] || { echo "no judges/$JUDGE/workflow.yml"; exit 1; }
+    # Refuse to start beside an existing run. Two judges writing the same
+    # node-run-$JUDGE.log and the same --out directory produced a leaderboard that
+    # was half one model and half another, on top of a vLLM restarted under both.
+    # It cost an hour to notice, because the only symptom was bad numbers.
+    #
+    # `grep -v "bash -c"` matters: an ssh command whose text mentions the script
+    # matches a naive pgrep, so a check can report a phantom job, or hide a real
+    # one behind a count you misread. Ask for the list, never just the count.
+    RUNNING=$(ps -eo pid,cmd --no-headers \
+        | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
+        | grep -v "bash -c" | grep -v grep || true)
+    if [ -n "$RUNNING" ]; then
+        echo "refusing to launch, a run is already going:" >&2
+        echo "$RUNNING" >&2
+        echo "stop it first: bash scripts/run_on_node.sh stop" >&2
+        exit 1
+    fi
     setsid nohup bash "$0" _run "$JUDGE" "$VARIANT" "$OUT" "$@" > "node-run-$JUDGE.log" 2>&1 < /dev/null &
     echo "launched pid $! judge=$JUDGE variant=$VARIANT out=$OUT datasets: $*"
+    ;;
+stop)
+    # Parent first. _run loops over datasets, so killing only the python child
+    # just advances the loop to the next dataset and looks like it worked.
+    pkill -f "run_on_node.sh _run" 2>/dev/null || true
+    sleep 1
+    pkill -f "run_all_datasets.py" 2>/dev/null || true
+    sleep 3
+    LEFT=$(ps -eo pid,cmd --no-headers \
+        | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
+        | grep -v "bash -c" | grep -v grep || true)
+    if [ -n "$LEFT" ]; then
+        echo "$LEFT" | awk '{print $1}' | xargs -r kill -9
+        sleep 2
+        LEFT=$(ps -eo pid,cmd --no-headers \
+            | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
+            | grep -v "bash -c" | grep -v grep || true)
+    fi
+    [ -z "$LEFT" ] && echo "CLEAN: no judge processes" || { echo "STILL RUNNING:"; echo "$LEFT"; exit 1; }
     ;;
 _run)
     shift
