@@ -355,6 +355,48 @@ def test_a_live_endpoint_gets_the_reasoning_model_defaults(monkeypatch):
     assert int(os.environ["MAX_ATTEMPTS"]) <= 6
 
 
+def test_a_model_the_endpoint_does_not_serve_is_reported(monkeypatch, caplog):
+    """Regression: asking for the wrong model looks exactly like a broken judge.
+
+    The launcher exported Qwen3-30B while vLLM was serving gpt-oss-20b. Every call
+    404'd, every judgment scored zero, and nothing in the output said why. Model
+    ids are not restricted content, so naming both is safe and saves hours.
+    """
+    import json
+    import logging
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Models(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"data": [{"id": "openai/gpt-oss-20b"}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), Models)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_port}/v1"
+    try:
+        assert J._served_models(base, None) == ["openai/gpt-oss-20b"]
+        monkeypatch.setenv("OPENAI_BASE_URL", base)
+        monkeypatch.setenv("OPENAI_MODEL", "Qwen/Qwen3-30B-A3B-Instruct-2507-FP8")
+        monkeypatch.setenv("OPENAI_API_KEY", "EMPTY")
+        with caplog.at_level(logging.ERROR, logger=J.log.name):
+            J._llm_backend(None)
+    finally:
+        srv.shutdown()
+    said = " ".join(r.getMessage() for r in caplog.records)
+    assert "does not serve" in said and "gpt-oss-20b" in said
+
+    # An endpoint that will not list its models must not trigger a false alarm.
+    assert J._served_models("http://127.0.0.1:9/v1", None, timeout=1) is None
+
+
 def test_preflight_treats_any_http_reply_as_reachable():
     """A 401 or 404 still proves a server is there, so it must not trigger fast-fail."""
     import threading

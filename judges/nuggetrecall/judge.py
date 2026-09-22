@@ -110,6 +110,28 @@ def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int 
     return False
 
 
+def _served_models(base_url: str, api_key: Optional[str], *, timeout: float = 5.0):
+    """Model ids the endpoint lists, or None if it will not say.
+
+    Model ids are not restricted content, so this is safe to log. None means the
+    endpoint does not answer /models usefully, which is normal for a gateway, and
+    is treated as "cannot tell" rather than as a mismatch.
+    """
+    import json
+    import urllib.request
+
+    try:
+        req = urllib.request.Request(
+            (base_url or "").rstrip("/") + "/models",
+            headers={"Authorization": f"Bearer {api_key or 'EMPTY'}"})
+        with urllib.request.urlopen(req, timeout=timeout) as fh:
+            data = json.load(fh)
+        ids = [m["id"] for m in data.get("data", []) if isinstance(m, dict) and "id" in m]
+        return ids or None
+    except Exception:
+        return None
+
+
 def _llm_backend(llm_config):
     """Build the minima-llm backend from the environment contract, never raising.
 
@@ -152,7 +174,8 @@ def _llm_backend(llm_config):
     # EMPTY, and a real endpoint that is down, and it never throttles a live one.
     # Cache hits are still served in every case, since they need no network.
     base = os.environ.get("OPENAI_BASE_URL") or os.environ.get("OPENAI_API_BASE") or ""
-    if not _endpoint_reachable(base, os.environ.get("OPENAI_API_KEY")):
+    reachable = _endpoint_reachable(base, os.environ.get("OPENAI_API_KEY"))
+    if not reachable:
         log.warning("LLM endpoint is not reachable. Cached judgments are still used, "
                     "and anything not in the cache fails fast, falls back and scores zero")
         os.environ.setdefault("MAX_ATTEMPTS", "1")
@@ -184,6 +207,19 @@ def _llm_backend(llm_config):
         os.environ.setdefault("BATCH_MAX_FAILURES", "none")
     if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
         os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
+
+    # Say so, loudly, when we are about to ask for a model the endpoint does not
+    # have. Every such call 404s, every judgment then scores zero, and the run
+    # looks exactly like a judge that cannot judge. It has already happened once:
+    # the launcher exported Qwen3-30B while the server was on gpt-oss-20b, and the
+    # whole rag25-gen run came back 0.000. An endpoint that will not list its
+    # models tells us nothing, so that case stays silent rather than crying wolf.
+    want = os.environ.get("OPENAI_MODEL") or os.environ.get("LLM_MODEL")
+    served = _served_models(base, os.environ.get("OPENAI_API_KEY")) if reachable else None
+    if served and want and want not in served:
+        log.error("the endpoint does not serve %r, it serves %s. Every call will "
+                  "fail and every judgment will score zero. Fix OPENAI_MODEL.",
+                  want, ", ".join(repr(s) for s in served[:5]))
     try:
         return OpenAIMinimaLlm(MinimaLlmConfig.from_env())
     except Exception as exc:

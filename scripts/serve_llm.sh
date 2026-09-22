@@ -50,8 +50,26 @@ wait)
     echo "timed out waiting for vLLM"; tail -20 vllm.log; exit 1
     ;;
 env)
+    # Ask the running server which model it serves, rather than trusting $MODEL.
+    # $MODEL is only the default for `start`, so after serving a second model the
+    # two disagree, and the judge then requests a model the server does not have.
+    # That cost a rag25-gen run: the launcher exported Qwen3-30B while vLLM was
+    # serving gpt-oss-20b, so every call 404'd and every judgment scored zero. The
+    # server is the only honest source for this, and a mismatch must be loud.
+    # grep -o, not sed: a greedy sed `.*"id":"..."` matches the LAST id on the
+    # line, which is the nested permission id, not the model. The model's own id is
+    # the first "id" in the payload.
+    SERVED="$(curl -s -m 5 "http://127.0.0.1:$PORT/v1/models" 2>/dev/null \
+        | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)"
+    if [ -z "$SERVED" ]; then
+        echo "no vLLM answering on port $PORT: run 'serve_llm.sh start' first" >&2
+        exit 1
+    fi
+    if [ "$SERVED" != "$MODEL" ]; then
+        echo "note: serving $SERVED, not the default $MODEL" >&2
+    fi
     echo "export OPENAI_BASE_URL=http://127.0.0.1:$PORT/v1"
-    echo "export OPENAI_MODEL=$MODEL"
+    echo "export OPENAI_MODEL=$SERVED"
     echo "export OPENAI_API_KEY=EMPTY"
     ;;
 stop)
