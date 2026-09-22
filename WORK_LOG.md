@@ -901,6 +901,18 @@ team can gain from its own runs.
   replays what already succeeded. The two kinds of retry are now separate by
   design, and two tests pin the distinction.
 
+- **Audited both judges for silent-failure modes**, after two in one day with the
+  same signature. Six independent reviewers over the judge code, the leaderboard
+  construction, the submission path, dataset differences, and policy and
+  determinism, with two adversarial refuters per candidate. 23 candidates. The
+  strongest signal was convergence rather than any single verdict: five reviewers
+  independently found the sticky LLM tuning, three found the dead specificity gate.
+  Three were confirmed by direct measurement and fixed, all in this log above.
+  Worth noting for method: requiring both refuters to uphold a finding killed all
+  23, including the three that were real. Independent rediscovery was the useful
+  signal, and adversarial verification tuned that strictly is a filter for
+  precision at a heavy cost in recall.
+
 ### 2026-09-19 and 20
 
 Project started from nothing.

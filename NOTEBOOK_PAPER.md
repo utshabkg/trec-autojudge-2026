@@ -172,6 +172,25 @@ NuggetRecall wins on both, so it is our main submission.
    ranked systems partly by brevity, and answer length correlates +0.558 with human
    truth on ragtime25, so the submitted score could have gone negative.
 
+8. **A threshold on a cosine is meaningless without knowing the encoder's scale, and
+   a parameter sweep will not tell you.** Corroborate filters pooled claims by how
+   specific they are to the topic, measured as cosine similarity under
+   `bge-base-en-v1.5`. We set that floor to 0.15 and swept it over 0.0 to 0.20. Then
+   we measured what the encoder actually produces: specific facts score 0.587 to
+   0.753, boilerplate hedges 0.361 to 0.472, and deliberately nonsense sentences
+   still score 0.266. Our floor and its entire sweep sat below all of it, so the
+   filter kept everything, on every dataset, for the whole of development. The sweep
+   could not reveal this, because every swept value gave an identical result and so
+   read as "this parameter does not matter".
+
+   This is not a harmless no-op. The bank is ranked by how many separate teams state
+   a claim, and a hedge is exactly what every team writes, so hedges took the top
+   slots and then counted as corroborated in the measure whose job is to penalise
+   padding. Whether this explains Corroborate's weakness on short answers is
+   **[pending]** a re-run, but the mechanism fits. The general guard we added is
+   worth more than the number: warn whenever a filter keeps everything or nothing,
+   and report the range actually observed.
+
 ---
 
 ## 6. Limitations
