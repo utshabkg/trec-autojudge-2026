@@ -11,8 +11,9 @@ rather than a generative LLM.
 **Status: work in progress. Numbers are not filled in yet.** Sections marked
 TODO are completed once the judge has been validated on the pilot datasets.
 
-`WORK_LOG.md` is the running record of the project: methodology, the reasoning
-behind each decision, what has been measured so far and what is still open.
+`NOTEBOOK_PAPER.md` is the short, plain-language account of the method and results,
+shaped like a TREC notebook paper. `WORK_LOG.md` is the detailed engineering record
+behind it.
 
 ## The problem this solves
 

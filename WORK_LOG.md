@@ -1,9 +1,13 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (official data submission lodged on both test sets).** This file is the single running record of the
-project: what we are doing, why, what is built, what we have measured, and what
-is still open. It is kept current as work proceeds, so it can be read directly
-for a progress update or used as the raw material for the paper.
+**Last updated: 2026-09-22 (official data submission lodged on both test sets).** This file is the detailed engineering record of the
+project: every decision with its reasoning, every measurement with its provenance,
+and every problem hit along the way. It is kept current as work proceeds.
+
+**For the paper, or to explain the work to someone new, read `NOTEBOOK_PAPER.md`
+instead.** That is the short, plain-language version, shaped like a TREC notebook
+paper. This file is what it is built from, and what to consult when reproducing or
+debugging.
 
 Two companion documents, deliberately narrower:
 

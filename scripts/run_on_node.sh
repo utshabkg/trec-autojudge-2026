@@ -4,7 +4,14 @@
 #   bash scripts/run_on_node.sh launch rag25-gen ragtime25 dragun-repgen
 #   bash scripts/run_on_node.sh launch --variant no-loto rag25-gen
 #   bash scripts/run_on_node.sh launch --judge nuggetrecall rag25-gen
+#   bash scripts/run_on_node.sh launch --judge nuggetrecall --out output-qwen2.5-7b rag25-gen
 #   bash scripts/run_on_node.sh status
+#
+# --out sets the output root. Use a separate one whenever the model changes: the
+# default root holds the submitted results, and the judge REUSES an existing
+# <filebase>.nuggets.jsonl rather than regenerating it, so running a second model
+# into the same directory would silently score it with the first model's answer
+# keys as well as overwriting the first model's results.
 #
 # --judge defaults to corroborate. A judge whose workflow.yml says uses_llm: true
 # is pointed at the vLLM endpoint from scripts/serve_llm.sh, which must already be
@@ -23,19 +30,23 @@ ENV_BIN="${AUTOJUDGE_ENV_BIN:-$HOME/miniforge3/envs/autojudge/bin}"
 case "${1:-}" in
 launch)
     shift
-    VARIANT="best"; JUDGE="corroborate"
-    while [ "${1:-}" = "--variant" ] || [ "${1:-}" = "--judge" ]; do
-        if [ "$1" = "--variant" ]; then VARIANT="$2"; else JUDGE="$2"; fi
+    VARIANT="best"; JUDGE="corroborate"; OUT="output"
+    while [ "${1:-}" = "--variant" ] || [ "${1:-}" = "--judge" ] || [ "${1:-}" = "--out" ]; do
+        case "$1" in
+            --variant) VARIANT="$2" ;;
+            --judge) JUDGE="$2" ;;
+            --out) OUT="$2" ;;
+        esac
         shift 2
     done
     [ $# -gt 0 ] || { echo "name at least one dataset"; exit 1; }
     [ -f "judges/$JUDGE/workflow.yml" ] || { echo "no judges/$JUDGE/workflow.yml"; exit 1; }
-    setsid nohup bash "$0" _run "$JUDGE" "$VARIANT" "$@" > "node-run-$JUDGE.log" 2>&1 < /dev/null &
-    echo "launched pid $! judge=$JUDGE variant=$VARIANT datasets: $*"
+    setsid nohup bash "$0" _run "$JUDGE" "$VARIANT" "$OUT" "$@" > "node-run-$JUDGE.log" 2>&1 < /dev/null &
+    echo "launched pid $! judge=$JUDGE variant=$VARIANT out=$OUT datasets: $*"
     ;;
 _run)
     shift
-    JUDGE="$1"; VARIANT="$2"; shift 2
+    JUDGE="$1"; VARIANT="$2"; OUT="$3"; shift 3
     export PATH="$ENV_BIN:$PATH"
     export HF_HOME="${HF_HOME:-/media/20TB/shared-cache/huggingface}"
     # One cache directory per judge, so an LLM judge's prompt cache and Corroborate's
@@ -56,7 +67,8 @@ _run)
         S=$SECONDS
         echo "=== $ds judge=$JUDGE variant=$VARIANT model=$OPENAI_MODEL start $(date -Is) ==="
         python run_all_datasets.py --workflow "judges/$JUDGE/workflow.yml" \
-            --variant "$VARIANT" --dataset "$ds" --keep-going > "run-$JUDGE-$ds-$VARIANT.log" 2>&1
+            --variant "$VARIANT" --dataset "$ds" --out-dir "$OUT" --keep-going \
+            > "run-$JUDGE-$ds-$VARIANT-$(basename "$OUT").log" 2>&1
         echo "=== $ds exit $? after $((SECONDS - S))s ==="
     done
     echo "=== ALL DONE $(date -Is) ==="
