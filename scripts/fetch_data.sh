@@ -1,16 +1,23 @@
 #!/usr/bin/env bash
 # Fetch the AutoJudge datasets, reading the password from a file outside the repo.
 #
-# The release at trec-auto-judge.cs.unh.edu is behind HTTP basic auth. The howto
-# says the user is `trec2026`, which is what the organizers intend, but as of
-# 2026-09-22 the server rejects it with 401 and accepts `trec2025` instead. The
-# organizers believe the webserver lost its configuration, so this may flip back.
-# The user is read from a file rather than hardcoded, so switching is one edit.
+# The release at trec-auto-judge.cs.unh.edu is behind HTTP basic auth. The user is
+# `trec2026`, as the howto says.
 #
-# The password is the one for the TREC Active Participants page
-# (https://trec.nist.gov/act_part/act_part.html, itself basic-auth protected).
-# That is NOT your personal ir.nist.gov/evalbase account password, and evalbase
-# now logs in through Login.gov so it cannot be scripted.
+# Read this if you hit a 401, because we lost time to it. Each TREC year has its
+# OWN password, both sent round by Angela Ellis at NIST in that year's welcome
+# mail. There is no single "Active Participants password". We first tried
+# trec2026 with the 2025 password, got a 401, and wrongly concluded the server was
+# misconfigured, because the 2025 pair happens to work on this UNH data host even
+# though it is rejected by NIST. Measured on 2026-09-22:
+#
+#   trec2026 + 2026 password -> 200 on UNH, 200 on trec.nist.gov
+#   trec2025 + 2025 password -> 200 on UNH, 401 on trec.nist.gov
+#
+# So a 401 means you have the wrong year's password, not a broken server. The
+# password is the shared TREC Active Participants one for the year, NOT your
+# personal ir.nist.gov/evalbase login, and evalbase now goes through Login.gov so
+# it cannot be scripted anyway.
 #
 # TIRA is not an alternative route. `tira-cli download` serves only
 # non-confidential datasets: kiddie returns 200, every pilot and both 2026 test
@@ -19,7 +26,7 @@
 # Put the credentials in place once:
 #   mkdir -p ~/.config/trec-autojudge && chmod 700 ~/.config/trec-autojudge
 #   printf '%s' 'THE-PASSWORD' > ~/.config/trec-autojudge/trec_password
-#   printf '%s' 'trec2025'     > ~/.config/trec-autojudge/trec_user
+#   printf '%s' 'trec2026'     > ~/.config/trec-autojudge/trec_user
 #   chmod 600 ~/.config/trec-autojudge/trec_{password,user}
 #
 # Then:  bash scripts/fetch_data.sh --pilot --test-2026
@@ -39,7 +46,7 @@ if [ -z "${TREC_AUTOJUDGE_USER:-}" ]; then
     if [ -f "$USER_FILE" ]; then
         TREC_AUTOJUDGE_USER="$(cat "$USER_FILE")"
     else
-        TREC_AUTOJUDGE_USER="trec2025"
+        TREC_AUTOJUDGE_USER="trec2026"
     fi
 fi
 export TREC_AUTOJUDGE_USER
@@ -56,10 +63,10 @@ probe() {
 code="$(probe || true)"
 if [ "$code" != "200" ]; then
     echo "Auth probe returned HTTP $code as user '$TREC_AUTOJUDGE_USER'." >&2
-    echo "401 means the user or password is wrong. The password is the shared" >&2
-    echo "TREC Active Participants one, not an evalbase login. The server has" >&2
-    echo "accepted trec2025 while rejecting the documented trec2026, so try the" >&2
-    echo "other one in ~/.config/trec-autojudge/trec_user." >&2
+    echo "401 almost always means the wrong YEAR's password. Each TREC year has" >&2
+    echo "its own, sent round by NIST in that year's welcome mail, and the user" >&2
+    echo "and password must be from the same year. It is not an evalbase login." >&2
+    echo "Check ~/.config/trec-autojudge/trec_user and trec_password agree." >&2
     exit 1
 fi
 echo "Auth OK. Fetching ${*:-all datasets} ..."

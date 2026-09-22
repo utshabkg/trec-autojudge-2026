@@ -909,14 +909,25 @@ Project started from nothing.
   outputs.
 - Renamed the repo to `trec-autojudge-2026`.
 
-**Resolved later the same day:** the credentials arrived. The release server
-accepts user **`trec2025`** and rejects `trec2026` with 401, same password. The
-howto says `trec2026`, and organizer Laura Dietz confirmed on 2026-09-22 that
-`trec2026` is what she intends and that the webserver has probably lost its
-configuration. So this is a server-side fault, not a documentation error. Re-tested
-2026-09-22 16:39 UTC with identical results on the index, the v1.0 release page and
-both test tarballs. If the server is fixed, `trec2025` may stop working, which only
-matters for a re-fetch, since the data is already downloaded.
+**Resolved later the same day:** the credentials arrived, and we then spent real
+time on a 401 that was our own mistake. We had one password and assumed it was
+"the Active Participants password". It is not. Each TREC year has its own, both
+sent round by Angela Ellis at NIST in that year's welcome mail. Using `trec2026`
+with the 2025 password gives a 401, and we wrongly read that as a broken server,
+because the 2025 pair *does* work on the UNH data host even though NIST rejects it.
+Organizer Laura Dietz pointed out the two passwords differ, which resolved it.
+Measured on 2026-09-22 after finding the 2026 mail:
+
+| user and password | UNH data host | trec.nist.gov |
+|---|---|---|
+| `trec2026` + 2026 password | 200 | 200 |
+| `trec2025` + 2025 password | 200 | 401 |
+
+So the howto was right all along and there was no server fault. The lesson worth
+keeping is that the data host is more permissive than NIST, so it cannot be used to
+confirm you hold the right credentials. `scripts/fetch_data.sh` now defaults to
+`trec2026` and its 401 message says to check the year rather than blame the server.
+Credentials stay in `~/.config/trec-autojudge/`, outside the repo, mode 600.
 
 Data fetched, 1.54 GiB compressed and 4.8 GiB extracted, stored under
 `/media/12TB/shared/datasets/trec-autojudge-2026` (itself a symlink onto the 20 TB
