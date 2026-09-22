@@ -1,6 +1,6 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (NuggetRecall built, running on rag25-gen).** This file is the single running record of the
+**Last updated: 2026-09-22 (both judges scored on three pilots, test-set runs started).** This file is the single running record of the
 project: what we are doing, why, what is built, what we have measured, and what
 is still open. It is kept current as work proceeds, so it can be read directly
 for a progress update or used as the raw material for the paper.
@@ -460,6 +460,50 @@ cluster id, leader, team set, run set, size and assignment across block sizes 1 
 | load average during the run | 123 | **1.5** |
 | full judge run, 10 topics of rag25-gen | not measured | 85 s |
 
+### Both judges compared on three pilots, the central result
+
+**Measured**, all scores from TIRA against held-out human assessments. NuggetRecall
+used Qwen3-30B-A3B-Instruct-2507 (FP8) served by vLLM.
+
+| pilot | task | Corroborate Max(K) | rank | NuggetRecall Max(K) | rank | field median |
+|---|---|---|---|---|---|---|
+| `rag25-gen` | short RAG answers | 0.323 | 87 of 92 | **0.788** | **45 of 92** | 0.787 |
+| `ragtime25` | report generation | 0.691 | 59 of 96 | **0.739** | **32 of 96** | 0.724 |
+| `dragun-repgen` | reports on a news article | **0.755** | **7 of 61** | 0.141 | 57 of 61 | 0.650 |
+
+Tauap B, the top-weighted correlation, follows the same pattern: NuggetRecall
+0.621 and 0.599 on rag25-gen and ragtime25, Corroborate 0.608 on dragun-repgen.
+
+**The two judges are complementary, and NuggetRecall wins on both of our actual
+targets.** rag25-gen is the analogue of rag26 and ragtime25 of ragtime26, and
+NuggetRecall leads on both, above the field median on ragtime25. NuggetRecall is
+therefore the primary submission for both test sets, and Corroborate a second
+submission, since it captures a different signal and its code submission is already
+proven. The choice rests only on pilot evidence, as the data policy requires.
+
+**Why NuggetRecall collapses on dragun, which matters as a limitation.** In DRAGUN
+the request is not a question: it is the news article itself (the topics file is
+349 KB for 30 topics, roughly 11 KB each). An answer key generated from a request
+like that lists facts from the article, not what a good report about it should
+contain. Query-derived nuggets assume the request is an information need. Both
+2026 test sets are, so the failure does not transfer, but it bounds the method.
+
+**The two judges measure different things.** Kendall between them is only about
+0.50 on ragtime25 and 0.23 on rag25-gen, while NuggetRecall's four measures agree
+with each other at 0.87 to 0.97.
+
+**Reading Min correctly.** Min is taken over every (truth measure, our measure)
+pair, not over our measures alone. NuggetRecall's four measures move almost in
+lockstep, yet its Min on ragtime25 is -0.291 while its Max is 0.739, so the negative
+value cannot come from one inconsistent measure of ours. ragtime25's human data must
+contain a second kind of truth measure that recall-style judges score against,
+plausibly citation support, which RAGTIME emphasises. Min on ragtime is therefore
+bounded by the structure of the truth rather than by what we emit. On rag25-gen every
+pair is positive (Min +0.721), so its truth is recall-like throughout. This revises
+the earlier reading below, which attributed Corroborate's negative Min on ragtime25
+to `CITE` alone: on rag25-gen `CITE` is still the likely culprit, but on ragtime25 at
+least part of it is the truth itself.
+
 ### The first real scores, from TIRA, against held-out human assessments
 
 **Measured.** The `best` configuration run on three full pilots, uploaded to TIRA,
@@ -747,6 +791,15 @@ team can gain from its own runs.
 - First truth-free signal on rag25-gen: all five measures separate the systems and
   none is length in disguise.
 - Launched full runs on three pilots: rag25-gen, ragtime25, dragun-repgen.
+- **First TIRA scores for Corroborate**: strong on report generation, near the
+  bottom on short RAG answers. Built **NuggetRecall** in response, which scored 0.788
+  on rag25-gen (median) and 0.739 on ragtime25 (rank 32 of 96).
+- Organizer Maik Froebe confirmed code submissions will be run against
+  `Qwen/Qwen2.5-7B-Instruct` and `openai/gpt-oss-20b`, so NuggetRecall must be tested
+  on both, not only on the model used for the data submission.
+- Fixed intermittent CI failures, which were the runner running out of disk rather
+  than anything in the code, and trimmed the test matrix to 3.10 and 3.12.
+- Started NuggetRecall on the rag26 and ragtime26 test sets.
 
 ### 2026-09-19 and 20
 
