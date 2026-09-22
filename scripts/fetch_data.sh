@@ -2,9 +2,10 @@
 # Fetch the AutoJudge datasets, reading the password from a file outside the repo.
 #
 # The release at trec-auto-judge.cs.unh.edu is behind HTTP basic auth. The howto
-# documents the user as `trec2026`, but that returns 401: the working user is
-# `trec2025`, verified against both the index and a tarball. So the user is read
-# from a file too rather than hardcoded to the documented value.
+# says the user is `trec2026`, which is what the organizers intend, but as of
+# 2026-09-22 the server rejects it with 401 and accepts `trec2025` instead. The
+# organizers believe the webserver lost its configuration, so this may flip back.
+# The user is read from a file rather than hardcoded, so switching is one edit.
 #
 # The password is the one for the TREC Active Participants page
 # (https://trec.nist.gov/act_part/act_part.html, itself basic-auth protected).
@@ -56,8 +57,9 @@ code="$(probe || true)"
 if [ "$code" != "200" ]; then
     echo "Auth probe returned HTTP $code as user '$TREC_AUTOJUDGE_USER'." >&2
     echo "401 means the user or password is wrong. The password is the shared" >&2
-    echo "TREC Active Participants one, not an evalbase login, and the working" >&2
-    echo "user is trec2025 even though the howto documents trec2026." >&2
+    echo "TREC Active Participants one, not an evalbase login. The server has" >&2
+    echo "accepted trec2025 while rejecting the documented trec2026, so try the" >&2
+    echo "other one in ~/.config/trec-autojudge/trec_user." >&2
     exit 1
 fi
 echo "Auth OK. Fetching ${*:-all datasets} ..."

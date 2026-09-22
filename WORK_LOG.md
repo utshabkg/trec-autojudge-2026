@@ -824,9 +824,14 @@ Project started from nothing.
   outputs.
 - Renamed the repo to `trec-autojudge-2026`.
 
-**Resolved later the same day:** the credentials arrived. One documentation bug
-worth reporting upstream: the howto states the download user is `trec2026`, which
-returns 401. The working user is **`trec2025`** with the same password.
+**Resolved later the same day:** the credentials arrived. The release server
+accepts user **`trec2025`** and rejects `trec2026` with 401, same password. The
+howto says `trec2026`, and organizer Laura Dietz confirmed on 2026-09-22 that
+`trec2026` is what she intends and that the webserver has probably lost its
+configuration. So this is a server-side fault, not a documentation error. Re-tested
+2026-09-22 16:39 UTC with identical results on the index, the v1.0 release page and
+both test tarballs. If the server is fixed, `trec2025` may stop working, which only
+matters for a re-fetch, since the data is already downloaded.
 
 Data fetched, 1.54 GiB compressed and 4.8 GiB extracted, stored under
 `/media/12TB/shared/datasets/trec-autojudge-2026` (itself a symlink onto the 20 TB
