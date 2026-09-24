@@ -93,7 +93,7 @@ _BATCH_BACKOFF_S = 5.0
 # uploads. Instead we record once what the operator set before we touched
 # anything, never overwrite those, and assign the rest per phase.
 _TUNABLES = ("MAX_ATTEMPTS", "TIMEOUT_S", "COOLDOWN_CAP_S", "MAX_BACKOFF_S",
-             "BATCH_MAX_FAILURES")
+             "BATCH_MAX_FAILURES", "RPM")
 _OPERATOR_TUNING = None
 
 
@@ -121,8 +121,14 @@ _NO_ENDPOINT = "http://127.0.0.1:9/v1"
 # would therefore zero an entire phase with nothing more than a warning line. Five
 # minutes covers a model load. It costs nothing when the endpoint is up, since the
 # first try returns, and nothing in TIRA's replay, where the URL is EMPTY and is
-# rejected without waiting.
+# rejected before any request is made.
 _ENDPOINT_PATIENCE_S = 300.0
+
+# Statuses that mean "a gateway is here, the model behind it is not ready yet".
+# A proxy or ingress in front of a loading server answers these at once, and
+# treating that answer as "up" would skip the whole wait on exactly the setup a
+# university cluster is likely to have.
+_NOT_READY_STATUSES = frozenset({502, 503, 504})
 
 
 def _endpoint_is_usable_url(base_url: str) -> bool:
@@ -148,25 +154,30 @@ def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int 
                         timeout: float = 5.0, patience_s: Optional[float] = None) -> bool:
     """Preflight: does anything answer at this endpoint?
 
-    Any HTTP response counts as reachable, including 401 or 404, because it proves a
-    server is there. Only a connection failure, a timeout or an unusable URL (TIRA's
-    replay sets OPENAI_BASE_URL to the literal string EMPTY) counts as unreachable.
+    A URL that can never answer (EMPTY, which is TIRA's replay value, a blank, or
+    our port-9 placeholder) is unreachable at once, with no request and no sleep.
 
-    A URL that cannot work at all (EMPTY, unset, our closed-port placeholder) is
-    written off after the quick tries. A real http(s) URL someone configured is
-    polled for up to `patience_s` with growing sleeps, so a server that is still
-    warming up is waited for rather than written off.
+    Any other HTTP response counts as reachable, including 401 or 404, because it
+    proves a server is there. The exception is 502, 503 and 504 while we are being
+    patient: that is a gateway whose model is still loading, so we keep waiting,
+    and if patience runs out we still report reachable, since something answers.
+
+    A real http(s) URL that does not answer at all is polled for up to
+    `patience_s` with growing sleeps. With patience off it gets `attempts` quick
+    tries, as before.
     """
     import os
     import time
     import urllib.error
     import urllib.request
 
+    if not _endpoint_is_usable_url(base_url):
+        return False
     if patience_s is None:
         patience_s = float(os.environ.get("NUGGETRECALL_ENDPOINT_PATIENCE_S",
                                           _ENDPOINT_PATIENCE_S))
-    url = (base_url or "").rstrip("/") + "/models"
-    patient = _endpoint_is_usable_url(base_url) and patience_s > 0
+    url = base_url.strip().rstrip("/") + "/models"
+    patient = patience_s > 0
     start = time.monotonic()
     i = 0
     while True:
@@ -175,22 +186,26 @@ def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int 
                 url, headers={"Authorization": f"Bearer {api_key or 'EMPTY'}"})
             urllib.request.urlopen(req, timeout=timeout).close()
             return True
-        except urllib.error.HTTPError:
-            return True
+        except urllib.error.HTTPError as exc:
+            if not (patient and exc.code in _NOT_READY_STATUSES):
+                return True
+            if time.monotonic() - start >= patience_s:
+                return True     # still a gateway answering, so call it reachable
+            answered = True
         except Exception:
-            i += 1
-            waited = time.monotonic() - start
-            if not patient:
-                if i >= attempts:
-                    return False
-                time.sleep(2)
-                continue
-            if waited >= patience_s:
+            answered = False
+        i += 1
+        waited = time.monotonic() - start
+        if not patient:
+            if i >= attempts:
                 return False
-            if i == attempts:
-                log.warning("LLM endpoint not answering yet, waiting up to %.0f s for it",
-                            patience_s)
-            time.sleep(min(2.0 * i, 30.0, max(0.0, patience_s - waited)))
+            time.sleep(2)
+            continue
+        if waited >= patience_s:
+            return answered
+        if i == attempts:
+            log.warning("LLM endpoint not ready yet, waiting up to %.0f s for it", patience_s)
+        time.sleep(min(2.0 * i, 30.0, max(0.0, patience_s - waited)))
 
 
 def _served_models(base_url: str, api_key: Optional[str], *, timeout: float = 5.0):
@@ -272,9 +287,14 @@ def _llm_backend(llm_config):
         # than that, would replay as a constant, all-zero leaderboard. With the
         # breaker off the misses simply fail one by one, which with EMPTY happens
         # before any I/O, and every hit is kept.
+        #
+        # RPM 0 is minima-llm's "unlimited" (wait_turn returns at once when the
+        # effective rate is <= 0). With the breaker off, every miss would
+        # otherwise queue at the default 600 per minute before failing, so a
+        # replay of a first run with thousands of failed calls would crawl.
         _apply_tuning({"MAX_ATTEMPTS": "1", "TIMEOUT_S": "5",
                        "COOLDOWN_CAP_S": "0", "MAX_BACKOFF_S": "0",
-                       "BATCH_MAX_FAILURES": "none"})
+                       "BATCH_MAX_FAILURES": "none", "RPM": "0"})
     else:
         # Defaults tuned for a reasoning model behind a local server, which is
         # what the organizers run submitted code against. Measured, not guessed:
@@ -295,9 +315,12 @@ def _llm_backend(llm_config):
         # These change no cache key, which is (model, messages, temperature,
         # max_tokens), so TIRA's replay-from-cache check is unaffected. An
         # operator's own value for any of them still wins.
+        # RPM is set back to minima-llm's own default of 600 explicitly, because
+        # the unreachable branch may have set it to 0 in an earlier phase of this
+        # same process, and against a live server the pacing is wanted.
         _apply_tuning({"TIMEOUT_S": "900", "MAX_ATTEMPTS": "4",
                        "COOLDOWN_CAP_S": "60", "MAX_BACKOFF_S": "20",
-                       "BATCH_MAX_FAILURES": "none"})
+                       "BATCH_MAX_FAILURES": "none", "RPM": "600"})
     if not os.environ.get("OPENAI_MODEL") and not os.environ.get("LLM_MODEL"):
         os.environ["OPENAI_MODEL"] = getattr(llm_config, "model", None) or "unconfigured"
 

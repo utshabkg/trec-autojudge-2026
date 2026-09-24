@@ -112,13 +112,34 @@ class CorroborateJudge:
             # would have been far slower than anything we measured, estimated at
             # days on rag26. One scratch directory per process fixes it, shared by
             # both phases so the signature below stays stable between them. The
-            # cache is content addressed, so results are unchanged, and every
-            # read and write is guarded, so a full disk only costs speed.
+            # cache is content addressed, so results are unchanged.
+            #
+            # Creating the directory must never be what kills a run. Before this
+            # cache existed, the judge needed no writable path except $outputDir,
+            # so a sandbox with no writable temp directory at all would now crash
+            # at the first line of create_nuggets, after registration, where
+            # nothing can be fixed. If mkdtemp fails we run uncached as before:
+            # slower, but finished. "" is the sentinel for "tried and failed", so
+            # the judge phase neither retries nor changes the encoder signature.
             if self._scratch_cache is None:
+                import atexit
+                import shutil
                 import tempfile
-                self._scratch_cache = tempfile.mkdtemp(prefix="corroborate-cache-")
-                log.info("no CACHE_DIR set, using scratch score cache %s", self._scratch_cache)
-            cache_dir = self._scratch_cache
+                try:
+                    self._scratch_cache = tempfile.mkdtemp(prefix="corroborate-cache-")
+                    log.info("no CACHE_DIR set, using scratch score cache %s",
+                             self._scratch_cache)
+                    owner, path = os.getpid(), self._scratch_cache
+                    # Only the creating process removes it, so a forked worker
+                    # exiting cannot delete the parent's cache under it.
+                    atexit.register(
+                        lambda: os.getpid() == owner and shutil.rmtree(path, ignore_errors=True))
+                except OSError as exc:
+                    log.warning("no writable temp directory (%s), running without a score "
+                                "cache, which is slower but gives the same result",
+                                type(exc).__name__)
+                    self._scratch_cache = ""
+            cache_dir = self._scratch_cache or None
         sig = (bi_encoder, cross_encoder, str(cache_dir), device)
         if self._encoders is None or self._enc_sig != sig:
             if self._encoders is not None:

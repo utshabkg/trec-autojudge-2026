@@ -578,7 +578,7 @@ def test_an_inert_specificity_gate_is_reported(caplog):
     assert not caplog.records
 
 
-def test_a_graded_run_without_cache_dir_still_gets_a_score_cache(monkeypatch):
+def test_a_graded_run_without_cache_dir_still_gets_a_score_cache(monkeypatch, tmp_path):
     """Regression: with no CACHE_DIR the score cache switched itself off.
 
     That is precisely the organizers' graded run, since the code submission mounts
@@ -597,6 +597,8 @@ def test_a_graded_run_without_cache_dir_still_gets_a_score_cache(monkeypatch):
         def close(self):
             pass
 
+    import tempfile
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))   # not the shared /tmp
     monkeypatch.setattr(CJ, "Encoders", FakeEncoders)
     j = CJ.CorroborateJudge()
     kw = dict(bi_encoder="b", cross_encoder="c", embed_batch_size=1, cross_batch_size=1,
@@ -607,3 +609,41 @@ def test_a_graded_run_without_cache_dir_still_gets_a_score_cache(monkeypatch):
     assert len(made) == 1 and first is second, "the second phase rebuilt the encoders"
     import os
     assert os.path.isdir(made[0])
+
+
+def test_no_writable_temp_dir_runs_uncached_instead_of_crashing(monkeypatch):
+    """Regression for the scratch cache itself, found by review before submitting.
+
+    Before the scratch cache existed the judge needed no writable path but its
+    output directory. An unguarded mkdtemp would turn a sandbox with no writable
+    temp directory into a crash at the first line of create_nuggets, after
+    registration. It must fall back to running uncached, once, with the encoder
+    signature stable across both phases.
+    """
+    import tempfile
+    from judges.corroborate import judge as CJ
+
+    made = []
+
+    class FakeEncoders:
+        def __init__(self, bi, cross, *, cache_dir=None, **kw):
+            made.append(cache_dir)
+        def close(self):
+            pass
+
+    tries = []
+
+    def no_tmp(*a, **k):
+        tries.append(1)
+        raise FileNotFoundError("No usable temporary directory found")
+
+    monkeypatch.setattr(tempfile, "mkdtemp", no_tmp)
+    monkeypatch.setattr(CJ, "Encoders", FakeEncoders)
+    j = CJ.CorroborateJudge()
+    kw = dict(bi_encoder="b", cross_encoder="c", embed_batch_size=1, cross_batch_size=1,
+              cross_max_length=8, hf_home=None, device="cpu")
+    first = j._get_encoders(None, **kw)
+    second = j._get_encoders(None, **kw)
+    assert made == [None], "it should run uncached, built once"
+    assert first is second
+    assert len(tries) == 1, "a failed mkdtemp was retried in the second phase"

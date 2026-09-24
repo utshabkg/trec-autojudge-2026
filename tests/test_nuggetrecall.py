@@ -415,66 +415,117 @@ def test_urls_that_can_never_answer_are_not_waited_for():
     assert J._endpoint_is_usable_url("https://example.org/v1")
 
 
-def test_a_configured_endpoint_that_comes_up_late_is_waited_for():
-    """Regression: four seconds of downtime at a phase start used to zero the phase.
+class _FakeClock:
+    """A monotonic clock and sleep that advance together, so waits cost nothing."""
 
-    An endpoint the operator configured gets polled, so a server still loading its
-    model when our container starts is waited for instead of written off.
-    """
-    import json
-    import socket
-    import threading
+    def __init__(self):
+        self.t = 0.0
+        self.slept = []
+
+    def monotonic(self):
+        return self.t
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.t += s
+
+
+def _patch_preflight(monkeypatch, outcomes):
+    """Feed urlopen a scripted list: an int is an HTTP status, None a refusal."""
     import time
-    from http.server import BaseHTTPRequestHandler, HTTPServer
+    import urllib.error
+    import urllib.request
 
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
+    clock = _FakeClock()
+    monkeypatch.setattr(time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(time, "sleep", clock.sleep)
+    calls = []
 
-    class Models(BaseHTTPRequestHandler):
-        def do_GET(self):
-            body = json.dumps({"data": [{"id": "m"}]}).encode()
-            self.send_response(200)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-        def log_message(self, *a):
+    class _Resp:
+        def close(self):
             pass
 
-    holder = {}
+    def fake_urlopen(req, timeout=None):
+        calls.append(clock.t)
+        o = outcomes[min(len(calls) - 1, len(outcomes) - 1)]
+        if o is None:
+            raise urllib.error.URLError("refused")
+        if o == 200:
+            return _Resp()
+        raise urllib.error.HTTPError(req.full_url, o, "status", {}, None)
 
-    def start_late():
-        time.sleep(3.0)
-        srv = HTTPServer(("127.0.0.1", port), Models)
-        holder["srv"] = srv
-        srv.serve_forever()
-
-    threading.Thread(target=start_late, daemon=True).start()
-    t0 = time.monotonic()
-    try:
-        ok = J._endpoint_reachable(f"http://127.0.0.1:{port}/v1", None, timeout=1,
-                                   patience_s=30)
-    finally:
-        if "srv" in holder:
-            holder["srv"].shutdown()
-    assert ok, "a server that came up after three seconds was written off"
-    assert time.monotonic() - t0 < 30
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    return clock, calls
 
 
-def test_a_configured_endpoint_that_never_comes_up_gives_up_on_time():
-    import socket
-    import time
+def test_a_configured_endpoint_that_comes_up_late_is_waited_for(monkeypatch):
+    """Regression: four seconds of downtime at a phase start used to zero the phase.
 
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()   # nothing listens here now
-    t0 = time.monotonic()
-    ok = J._endpoint_reachable(f"http://127.0.0.1:{port}/v1", None, timeout=1, patience_s=4)
-    took = time.monotonic() - t0
-    assert not ok
-    assert took < 15, f"patience of 4 s took {took:.1f} s"
+    Refused five times, then up. The old preflight gave up after three tries and
+    about four seconds, so this fails under it. A fake clock keeps it instant and
+    deterministic, which a real late-starting server could not.
+    """
+    clock, calls = _patch_preflight(monkeypatch, [None] * 5 + [200])
+    assert J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=300)
+    assert len(calls) == 6, "it stopped trying before the server came up"
+    assert clock.t > 4, "it did not wait longer than the old four-second window"
+
+
+def test_a_gateway_saying_not_ready_is_waited_for(monkeypatch):
+    """A proxy in front of a loading model answers 503 at once. That is not 'up'."""
+    clock, calls = _patch_preflight(monkeypatch, [503, 503, 502, 200])
+    assert J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=300)
+    assert len(calls) == 4
+
+
+def test_a_gateway_that_never_gets_ready_still_counts_as_reachable(monkeypatch):
+    """Something answers, so after the wait we run live rather than fall back."""
+    clock, _ = _patch_preflight(monkeypatch, [503])
+    assert J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=60)
+    assert clock.t >= 60
+
+
+def test_other_http_errors_mean_up_immediately(monkeypatch):
+    for code in (401, 404, 500):
+        clock, calls = _patch_preflight(monkeypatch, [code])
+        assert J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=300)
+        assert len(calls) == 1 and clock.t == 0, code
+
+
+def test_urls_that_can_never_answer_cost_no_request_and_no_sleep(monkeypatch):
+    for url in ("EMPTY", "", J._NO_ENDPOINT, "http://127.0.0.1:9"):
+        clock, calls = _patch_preflight(monkeypatch, [200])
+        assert not J._endpoint_reachable(url, None, patience_s=300)
+        assert calls == [] and clock.slept == [], url
+
+
+def test_a_configured_endpoint_that_never_comes_up_gives_up_on_time(monkeypatch):
+    clock, calls = _patch_preflight(monkeypatch, [None])
+    assert not J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=120)
+    assert 120 <= clock.t <= 150, clock.t
+
+
+def test_patience_off_keeps_the_old_quick_tries(monkeypatch):
+    clock, calls = _patch_preflight(monkeypatch, [None])
+    assert not J._endpoint_reachable("http://llm.internal:8000/v1", None, patience_s=0)
+    assert len(calls) == 3 and clock.t == 4
+
+
+def test_rpm_is_unlimited_on_replay_and_restored_when_live(monkeypatch):
+    """With the breaker off, replay misses would otherwise queue at 600 per minute."""
+    import os
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-20b")
+    monkeypatch.setenv("OPENAI_BASE_URL", "EMPTY")
+    J._llm_backend(None)
+    assert os.environ["RPM"] == "0"
+    monkeypatch.setattr(J, "_endpoint_reachable", lambda *a, **k: True)
+    monkeypatch.setattr(J, "_served_models", lambda *a, **k: None)
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://llm.internal:8000/v1")
+    J._llm_backend(None)
+    assert os.environ["RPM"] == "600", "a live phase inherited the replay's unlimited rate"
 
 
 def test_an_operator_override_survives_both_phases(monkeypatch):
