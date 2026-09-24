@@ -868,9 +868,13 @@ team can gain from its own runs.
   crash Corroborate, that a 503 gateway bypassed the new patience, and that my
   patience test passed under the old code too. All fixed in e1b7c48 and 86317c3,
   with five regression tests checked to fail against the old judge.py.
-- **Real code submission of NuggetRecall dispatched** on commit 86317c3, after dry
-  runs of both judges on that exact commit came back green with tira printing "The
-  git repository ... is clean" and the guard reading the container's own output.
+- **NuggetRecall's code submission is registered on TIRA as `rank-dioptre`.** CI
+  run 36072255644 on commit 86317c3, dispatched only after dry runs of both judges
+  on that exact commit came back green. The log confirms each stage: the git
+  repository is clean (the check that would have killed it two days earlier), the
+  image produced valid output on kiddie and the guard confirmed it ranks systems,
+  the replay from cache reproduced it, the metadata was uploaded, the image pushed,
+  and the software registered.
 
 ### 2026-09-22
 
