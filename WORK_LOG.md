@@ -852,6 +852,26 @@ team can gain from its own runs.
   sits in a sibling `CACHE_DIR/`, and for it TIRA registers only the variable name
   and `rw` mode. So the organizers get an empty cache, not ours.
 
+- **gpt-oss-20b on long reports: 0.789 on ragtime25, rank 10 of 105**, against 0.739
+  and rank 37 for Qwen3-30B, the model our lodged submission used. That is 0.05, five
+  times the noise floor. It got there despite 209 of 7,159 judgments (2.9%) staying
+  unreadable after three attempts, against 0.75% on rag25-gen, and 5 of 122 topics
+  falling back to a title-only key: the longer the report, the more often the
+  reasoning model's reply is not usable. Zero failed calls, average latency 40 s, 99
+  minutes. On rag25-gen the two models tie. Since the choice rests on the pilot, which
+  is what the pilots are for, we started gpt-oss on ragtime26 for an additional data
+  submission.
+- **Two more reviews before submitting.** The first, of the real submission path,
+  found the dirty-tree failure, the replay breaker, the four-second patience,
+  Corroborate's missing cache in the graded run, and a guard that skipped
+  Corroborate. The second, of those fixes, found that my scratch cache could itself
+  crash Corroborate, that a 503 gateway bypassed the new patience, and that my
+  patience test passed under the old code too. All fixed in e1b7c48 and 86317c3,
+  with five regression tests checked to fail against the old judge.py.
+- **Real code submission of NuggetRecall dispatched** on commit 86317c3, after dry
+  runs of both judges on that exact commit came back green with tira printing "The
+  git repository ... is clean" and the guard reading the container's own output.
+
 ### 2026-09-22
 
 - The main machine's GPU driver wedged (section 7). Moved compute to machine 54.

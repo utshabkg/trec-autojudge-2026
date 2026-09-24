@@ -141,12 +141,23 @@ NuggetRecall wins on both, so it is our main submission.
    rag25-gen. A judge that looks good on RAGTIME may just be rewarding long answers, so
    we checked that none of our measures is mostly length.
 
-4. **Model size matters less than we expected, once the harness is right.** On rag25-gen,
-   the same NuggetRecall judge scores **0.788 with Qwen3-30B** and **0.654 with
-   Qwen2.5-7B**, a drop of about 0.13 and 20 ranking places. The smaller model
-   follows the output format just as reliably (no failed or unreadable answers), but
-   it judges less accurately, mostly by giving partial credit too freely. Even so it
-   stays far above Corroborate (0.323) and the length shortcut (0.152).
+4. **A small reasoning model judged long reports better than a larger instruct model.**
+   Same judge, same prompts, only the LLM changes:
+
+   | Judge LLM | rag25-gen (short answers) | ragtime25 (long reports) |
+   |---|---|---|
+   | Qwen3-30B-A3B-Instruct (FP8) | 0.788 | 0.739 (rank 37 of 105) |
+   | gpt-oss-20b (reasoning) | 0.783 | **0.789 (rank 10 of 105)** |
+   | Qwen2.5-7B-Instruct | 0.654 | not run |
+
+   On short answers the two larger models tie, within our noise of about 0.01. On long
+   reports the reasoning model is 0.05 better, five times the noise, even though 2.9%
+   of its replies came back unreadable and 5 of 122 topics fell back to a title-only
+   answer key. Checking twenty facts against a long report seems to reward a model
+   that reasons before it answers. The 7B model follows the output format just
+   as reliably as the others but judges less accurately, mostly by giving partial
+   credit too freely, and still stays far above Corroborate (0.323) and the length
+   shortcut (0.152).
 
 5. **An LLM judge can fail silently and completely, and the failure looks like a bad
    judge.** Running the same judge on gpt-oss-20b scored **0.000**, last of 94. The
