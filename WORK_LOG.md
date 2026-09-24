@@ -827,6 +827,31 @@ team can gain from its own runs.
 
 ## 8. Progress log
 
+### 2026-09-23 and 24
+
+- **The specificity-gate fix changed nothing measurable, which refutes our guess.**
+  Corroborate re-run on rag25-gen and ragtime25 with the floor at 0.50 instead of the
+  inert 0.15. The config confirms it took effect. Measures moved by at most 0.015
+  (NPREC most, CITE least), and TIRA's scores did not move: 0.323 on rag25-gen to
+  three decimals on all three numbers, 0.690 against 0.691 on ragtime25. We had
+  written that the dead filter was a plausible cause of Corroborate's collapse on
+  short answers. It is not. The cause is the design assumption in finding 1. The
+  fix stays because the gate should do what it says, but it is not a result.
+- **Those Corroborate runs took 8.5 and 7.9 hours, on CPU.** The log says "No GPU with
+  >= 6.0 GiB free, using CPU": vLLM held 44.8 of the single card's 49 GB, idle, for
+  two days. Worth remembering both for scheduling and because it is a preview of a
+  CPU-only TIRA worker.
+- **NuggetRecall's code-submission rehearsal is now genuinely green.** Run 35789234299
+  on commit 40f64f6. The judge ran on the runner against the stub and warmed the
+  cache, the container then ran with no reachable endpoint, served every judgment
+  from that cache, and the guard confirmed the container's own leaderboard ranks
+  systems. TIRA's replay reproduced it.
+- **Checked that the stub replies cannot ship.** Read tira's submit_code: on a real
+  submission it uploads only the pre-upload output directory as try-run metadata
+  (`upload_run_anonymous(tmp_dir)` with `tmp_dir` being `.../output`). The cache
+  sits in a sibling `CACHE_DIR/`, and for it TIRA registers only the variable name
+  and `rw` mode. So the organizers get an empty cache, not ours.
+
 ### 2026-09-22
 
 - The main machine's GPU driver wedged (section 7). Moved compute to machine 54.

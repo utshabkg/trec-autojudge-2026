@@ -204,10 +204,17 @@ NuggetRecall wins on both, so it is our main submission.
    This is not a harmless no-op. The bank is ranked by how many separate teams state
    a claim, and a hedge is exactly what every team writes, so hedges took the top
    slots and then counted as corroborated in the measure whose job is to penalise
-   padding. Whether this explains Corroborate's weakness on short answers is
-   **[pending]** a re-run, but the mechanism fits. The general guard we added is
-   worth more than the number: warn whenever a filter keeps everything or nothing,
-   and report the range actually observed.
+   padding.
+
+   We then re-ran Corroborate with a floor that actually filters, and it made **no
+   measurable difference**: 0.323 on rag25-gen before and after, to three decimal
+   places, and 0.691 against 0.690 on ragtime25. The measures themselves moved by at
+   most 0.015. So we had guessed that the dead filter might explain Corroborate's
+   weakness on short answers, and the measurement says it does not. The weakness is
+   the one in finding 1: agreement between teams is simply not what separates good
+   short answers from bad ones. The general lesson still stands and is worth more
+   than the number: warn whenever a filter keeps everything or nothing, and report
+   the range actually observed. **[done]**
 
 ---
 
