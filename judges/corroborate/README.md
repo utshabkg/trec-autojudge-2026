@@ -44,16 +44,21 @@ auto-judge run \
 where the embedding and cross-encoder scores are cached, which is what makes an
 interrupted run cheap to resume and the ablation variants nearly free.
 
-For `ragtime26`, add `--variant multilingual`. Its documents are NeuCLIR and not
-all English, and an English-only NLI model returns noise on them rather than an
-error.
+`ragtime26` needs no special variant. RAGTIME draws on NeuCLIR, so we expected
+non-English documents, where an English-only NLI model would return noise rather
+than an error. Both 2026 releases turned out to be English, so `best` is right for
+both test sets.
 
 ## Variants
 
 `best` is the submitted configuration. `no-loto`, `run-votes`, `coverage-only`
 and `no-cross-encoder` are the ablations that answer whether each component
-earns its place. `fast` is a bounded-runtime configuration for a CPU-only
-worker. `multilingual` swaps in `bge-reranker-v2-m3`.
+earns its place. `fast` turns off cross-encoder adjudication in coverage scoring,
+caps the bank at 25 clusters and reads at most 2 chunks per cited document, which
+makes it faster on a CPU-only worker. It is not bounded, though: citation
+attribution calls the cross-encoder unconditionally, and `fast` has not been
+validated against truth. `multilingual` swaps in `bge-reranker-v2-m3`, which the image does not
+bake in, so it runs only locally or with the model mounted.
 
 ## Two things that will bite you
 

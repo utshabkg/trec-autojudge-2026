@@ -381,6 +381,102 @@ def test_a_dead_first_phase_does_not_cripple_a_live_second_phase(monkeypatch):
     assert os.environ["BATCH_MAX_FAILURES"] == "none"
 
 
+def test_the_replay_branch_never_aborts_a_batch(monkeypatch):
+    """Regression: the unreachable branch used to keep minima-llm's 25-failure breaker.
+
+    That branch is TIRA's replay, OPENAI_BASE_URL=EMPTY, which must rebuild the first
+    run from the prompt cache. A call that failed in the first run has no cache entry,
+    so it misses. minima-llm's breaker aborts the WHOLE batch after 25 failures and
+    discards the cache hits in it too, so 26 misses in one batch turned the replay
+    into a constant, all-zero leaderboard. The breaker must be off in both branches.
+    """
+    import os
+    monkeypatch.setattr(J, "_OPERATOR_TUNING", None, raising=False)
+    for var in J._TUNABLES:
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("OPENAI_BASE_URL", "EMPTY")
+    monkeypatch.setenv("OPENAI_MODEL", "openai/gpt-oss-20b")
+    J._llm_backend(None)
+    assert os.environ["BATCH_MAX_FAILURES"] == "none", "the replay would discard cache hits"
+    assert os.environ["TIMEOUT_S"] == "5", "a replay must still fail misses fast"
+
+
+def test_urls_that_can_never_answer_are_not_waited_for():
+    assert not J._endpoint_is_usable_url("EMPTY")
+    assert not J._endpoint_is_usable_url("")
+    assert not J._endpoint_is_usable_url(J._NO_ENDPOINT)
+    assert not J._endpoint_is_usable_url(J._NO_ENDPOINT + "/")
+    # test_empty_reports uses the placeholder without /v1. Matching it by exact
+    # string would have made that test wait five minutes per case.
+    assert not J._endpoint_is_usable_url("http://127.0.0.1:9")
+    assert not J._endpoint_is_usable_url("http://localhost:9/v1")
+    assert J._endpoint_is_usable_url("http://127.0.0.1:8000/v1"), "a local server is real"
+    assert J._endpoint_is_usable_url("http://llm.internal:8000/v1")
+    assert J._endpoint_is_usable_url("https://example.org/v1")
+
+
+def test_a_configured_endpoint_that_comes_up_late_is_waited_for():
+    """Regression: four seconds of downtime at a phase start used to zero the phase.
+
+    An endpoint the operator configured gets polled, so a server still loading its
+    model when our container starts is waited for instead of written off.
+    """
+    import json
+    import socket
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+
+    class Models(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"data": [{"id": "m"}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *a):
+            pass
+
+    holder = {}
+
+    def start_late():
+        time.sleep(3.0)
+        srv = HTTPServer(("127.0.0.1", port), Models)
+        holder["srv"] = srv
+        srv.serve_forever()
+
+    threading.Thread(target=start_late, daemon=True).start()
+    t0 = time.monotonic()
+    try:
+        ok = J._endpoint_reachable(f"http://127.0.0.1:{port}/v1", None, timeout=1,
+                                   patience_s=30)
+    finally:
+        if "srv" in holder:
+            holder["srv"].shutdown()
+    assert ok, "a server that came up after three seconds was written off"
+    assert time.monotonic() - t0 < 30
+
+
+def test_a_configured_endpoint_that_never_comes_up_gives_up_on_time():
+    import socket
+    import time
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()   # nothing listens here now
+    t0 = time.monotonic()
+    ok = J._endpoint_reachable(f"http://127.0.0.1:{port}/v1", None, timeout=1, patience_s=4)
+    took = time.monotonic() - t0
+    assert not ok
+    assert took < 15, f"patience of 4 s took {took:.1f} s"
+
+
 def test_an_operator_override_survives_both_phases(monkeypatch):
     """The documented escape hatch must still win over either phase's policy."""
     import os

@@ -58,6 +58,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0          # tira reads git metadata for provenance
+          # checkout@v4 otherwise writes the job's GITHUB_TOKEN into .git/config,
+          # and the Dockerfile's `ADD .git` then copies it into the image TIRA keeps.
+          # The token dies when the job ends, but a credential has no business in
+          # a shipped image, and nothing here needs to push.
+          persist-credentials: false
 
       # tira-cli submits the committed state of the current branch and refuses a
       # dirty tree, so fail early and loudly rather than submitting a surprise.
@@ -79,20 +84,28 @@ jobs:
         run: |
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install -e '.[all]'
-          pip install --upgrade tira
+          # Pinned to the release every green rehearsal ran with. An unpinned
+          # upgrade could change submit_code between the dry run and the real one.
+          pip install tira==0.0.204
 
       # tira-cli runs pytest as a submission gate, and two of the framework
       # tests execute the judge for real, so the weights must be present here
       # too. The same two the image bakes.
+      # Scratch space lives in runner.temp, never in the checkout. tira refuses a
+      # dirty tree on a real submission, and it counts untracked files, but it
+      # skips that check on a dry run, silently. With the weights at .hf/ and the
+      # warm output at ci-warm/ inside the checkout, every dry run was green and
+      # every real submission would have died on "The git repository is not
+      # clean", for both judges, on the one command that has to work.
       - name: Cache encoder weights
         uses: actions/cache@v4
         with:
-          path: ${{ github.workspace }}/.hf
-          key: hf-submit-v2
+          path: ${{ runner.temp }}/hf
+          key: hf-submit-v3
 
       - name: Fetch encoder weights
         env:
-          HF_HOME: ${{ github.workspace }}/.hf
+          HF_HOME: ${{ runner.temp }}/hf
         run: |
           python - <<'PY'
           from huggingface_hub import snapshot_download
@@ -106,7 +119,7 @@ jobs:
       # blocks the submission anyway. Running it first makes the failure obvious.
       - name: Tests
         env:
-          HF_HOME: ${{ github.workspace }}/.hf
+          HF_HOME: ${{ runner.temp }}/hf
         run: python -m pytest tests -q
 
       - name: Log in to TIRA
@@ -150,7 +163,7 @@ jobs:
           OPENAI_BASE_URL: http://127.0.0.1:8000/v1
           OPENAI_MODEL: Qwen/Qwen2.5-7B-Instruct
           OPENAI_API_KEY: EMPTY
-          HF_HOME: ${{ github.workspace }}/.hf
+          HF_HOME: ${{ runner.temp }}/hf
         run: |
           set -euo pipefail
           python3 scripts/stub_openai.py --host 127.0.0.1 --port 8000 \
@@ -160,18 +173,18 @@ jobs:
           done
           curl -sf http://127.0.0.1:8000/v1/models | head -c 120; echo
 
-          export CACHE_DIR="${{ github.workspace }}/ci-cache"
+          export CACHE_DIR="${{ runner.temp }}/ci-cache"
           mkdir -p "$CACHE_DIR"
           auto-judge run \
             --workflow judges/${{ inputs.judge }}/workflow.yml \
             --variant ${{ inputs.variant }} \
             --rag-responses data/kiddie/runs/repgen/ \
             --rag-topics data/kiddie/topics/kiddie-topics.jsonl \
-            --out-dir ./ci-warm
+            --out-dir "${{ runner.temp }}/ci-warm"
           # If this fails, the judge is broken here, before any container is
           # involved, which is a much easier failure to read.
           # auto-judge run writes straight into --out-dir, with no subdirectory.
-          python scripts/check_upload_dir.py ./ci-warm
+          python scripts/check_upload_dir.py "${{ runner.temp }}/ci-warm"
           ls -l "$CACHE_DIR"
           echo "CI_CACHE=$CACHE_DIR" >> "$GITHUB_ENV"
 
@@ -190,6 +203,13 @@ jobs:
           OPENAI_API_KEY: EMPTY
         run: |
           set -euo pipefail
+          # The same clean-tree test tira applies to a real submission, applied
+          # here to both, so a dry run fails exactly where the real run would.
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "tree is dirty, and tira refuses a dirty tree on a real submission:"
+            git status --porcelain
+            exit 1
+          fi
           # kiddie is small and ships in the repo, so the pre-upload test is
           # quick. It is passed on a real submission too: see the header. Leaving
           # it off lets tira-cli pick an arbitrary large pilot set instead.
@@ -212,10 +232,6 @@ jobs:
           #
           # Corroborate declares uses_llm: false and makes no LLM calls, so it
           # needs neither.
-          #
-          # --allow-network lets the pre-upload run reach the stub above. Without
-          # it the container is isolated, every call fails, and the whole test
-          # degenerates to the all-zero case described on the stub step.
           LLM=()
           if grep -qE "^uses_llm:[[:space:]]*true" "judges/${{ inputs.judge }}/workflow.yml"; then
             # The endpoint is deliberately unreachable. Every judgment must come
@@ -241,11 +257,21 @@ jobs:
       - name: The container's output must actually rank systems
         run: |
           set -euo pipefail
-          OUT=$(grep -oE '/tmp/tira-[A-Za-z0-9]+/output' tira-submission.log | tail -1 || true)
+          # Read the path from tira's own sentence rather than guessing its shape.
+          # The first version matched /tmp/tira-[A-Za-z0-9]+/output, which missed
+          # about one run in five, because mkdtemp names can contain "_", and
+          # never matched Corroborate at all, whose output has no /output suffix.
+          OUT=$(grep -oE 'You can verify them at /tmp/tira-[A-Za-z0-9_]+(/output)?' \
+                  tira-submission.log | tail -1 | awk '{print $NF}' || true)
           if [ -z "$OUT" ] || [ ! -d "$OUT" ]; then
-            # A real submission has already been registered by this point, so
-            # failing here could not undo it and would only be noise. The dry run
-            # exercises the same code path and is where this must catch things.
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              # On a dry run this is the only place the output gets checked, so
+              # not finding it is a failure, not a shrug.
+              echo "no container output directory found in the log" >&2
+              exit 1
+            fi
+            # A real submission is registered by now. Failing could not undo it,
+            # and a red job invites a second, duplicate submission.
             echo "::warning::no container output directory in the log, nothing checked"
             exit 0
           fi

@@ -576,3 +576,34 @@ def test_an_inert_specificity_gate_is_reported(caplog):
     with caplog.at_level(logging.WARNING, logger=P.log.name):
         P._warn_if_gate_is_inert(clusters, -1.0)
     assert not caplog.records
+
+
+def test_a_graded_run_without_cache_dir_still_gets_a_score_cache(monkeypatch):
+    """Regression: with no CACHE_DIR the score cache switched itself off.
+
+    That is precisely the organizers' graded run, since the code submission mounts
+    a cache only for LLM judges. Every cited chunk was then re-embedded for every
+    citation of it, making rag26 on CPU an estimated days rather than hours. Both
+    phases must also share ONE scratch directory, or the encoder signature changes
+    between them and the models and cache are rebuilt.
+    """
+    from judges.corroborate import judge as CJ
+
+    made = []
+
+    class FakeEncoders:
+        def __init__(self, bi, cross, *, cache_dir=None, **kw):
+            made.append(cache_dir)
+        def close(self):
+            pass
+
+    monkeypatch.setattr(CJ, "Encoders", FakeEncoders)
+    j = CJ.CorroborateJudge()
+    kw = dict(bi_encoder="b", cross_encoder="c", embed_batch_size=1, cross_batch_size=1,
+              cross_max_length=8, hf_home=None, device="cpu")
+    first = j._get_encoders(None, **kw)
+    second = j._get_encoders(None, **kw)
+    assert made and made[0] is not None, "no cache directory, so the score cache is off"
+    assert len(made) == 1 and first is second, "the second phase rebuilt the encoders"
+    import os
+    assert os.path.isdir(made[0])

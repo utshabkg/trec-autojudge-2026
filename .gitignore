@@ -123,3 +123,7 @@ __marimo__/
 # Local Claude Code permission rules, machine-specific and not shared
 .claude/settings.local.json
 .claude/settings.json
+
+# CI scratch space, kept out of the checkout on purpose (tira refuses a dirty tree)
+/.hf/
+/ci-warm/

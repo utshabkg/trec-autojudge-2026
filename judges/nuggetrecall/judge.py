@@ -114,21 +114,62 @@ def _apply_tuning(policy: Dict[str, str]) -> None:
 _NO_ENDPOINT = "http://127.0.0.1:9/v1"
 
 
+# How long to wait for an operator-supplied http(s) endpoint that is not answering
+# yet. It used to be about four seconds, three quick tries, and the whole phase was
+# then run in fast-fail mode. A server still loading its model when our container
+# starts, or one of the "short hiccups" the organizers told us their cluster has,
+# would therefore zero an entire phase with nothing more than a warning line. Five
+# minutes covers a model load. It costs nothing when the endpoint is up, since the
+# first try returns, and nothing in TIRA's replay, where the URL is EMPTY and is
+# rejected without waiting.
+_ENDPOINT_PATIENCE_S = 300.0
+
+
+def _endpoint_is_usable_url(base_url: str) -> bool:
+    """Could this URL ever answer? EMPTY, blanks and port 9 cannot.
+
+    Port 9 is matched by host and port rather than by exact string, because the
+    placeholder turns up with and without a /v1 suffix, and treating a variant as a
+    real endpoint would mean waiting minutes on a port that is closed by design.
+    """
+    from urllib.parse import urlsplit
+
+    b = (base_url or "").strip()
+    if not b.lower().startswith(("http://", "https://")):
+        return False
+    try:
+        parts = urlsplit(b)
+        return not (parts.port == 9 and parts.hostname in ("127.0.0.1", "localhost"))
+    except ValueError:
+        return False
+
+
 def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int = 3,
-                        timeout: float = 5.0) -> bool:
+                        timeout: float = 5.0, patience_s: Optional[float] = None) -> bool:
     """Preflight: does anything answer at this endpoint?
 
     Any HTTP response counts as reachable, including 401 or 404, because it proves a
     server is there. Only a connection failure, a timeout or an unusable URL (TIRA's
     replay sets OPENAI_BASE_URL to the literal string EMPTY) counts as unreachable.
-    Retried briefly so a server that is still warming up is not written off.
+
+    A URL that cannot work at all (EMPTY, unset, our closed-port placeholder) is
+    written off after the quick tries. A real http(s) URL someone configured is
+    polled for up to `patience_s` with growing sleeps, so a server that is still
+    warming up is waited for rather than written off.
     """
+    import os
     import time
     import urllib.error
     import urllib.request
 
+    if patience_s is None:
+        patience_s = float(os.environ.get("NUGGETRECALL_ENDPOINT_PATIENCE_S",
+                                          _ENDPOINT_PATIENCE_S))
     url = (base_url or "").rstrip("/") + "/models"
-    for i in range(attempts):
+    patient = _endpoint_is_usable_url(base_url) and patience_s > 0
+    start = time.monotonic()
+    i = 0
+    while True:
         try:
             req = urllib.request.Request(
                 url, headers={"Authorization": f"Bearer {api_key or 'EMPTY'}"})
@@ -137,9 +178,19 @@ def _endpoint_reachable(base_url: str, api_key: Optional[str], *, attempts: int 
         except urllib.error.HTTPError:
             return True
         except Exception:
-            if i < attempts - 1:
+            i += 1
+            waited = time.monotonic() - start
+            if not patient:
+                if i >= attempts:
+                    return False
                 time.sleep(2)
-    return False
+                continue
+            if waited >= patience_s:
+                return False
+            if i == attempts:
+                log.warning("LLM endpoint not answering yet, waiting up to %.0f s for it",
+                            patience_s)
+            time.sleep(min(2.0 * i, 30.0, max(0.0, patience_s - waited)))
 
 
 def _served_models(base_url: str, api_key: Optional[str], *, timeout: float = 5.0):
@@ -210,12 +261,20 @@ def _llm_backend(llm_config):
     if not reachable:
         log.warning("LLM endpoint is not reachable. Cached judgments are still used, "
                     "and anything not in the cache fails fast, falls back and scores zero")
-        # The breaker stays on here, deliberately: with nothing answering, every
-        # cache miss is going to fail, and aborting the batch early is the fastest
-        # honest way to reach the same all-zero result.
+        # The batch breaker is OFF here too. It used to be left at 25 on the theory
+        # that with nothing answering every miss fails anyway, so aborting early
+        # reaches the same all-zero result faster. That was wrong, because a batch
+        # holds cache HITS as well as misses, and minima-llm's abort throws away
+        # every result in the batch. This branch is exactly TIRA's replay
+        # (OPENAI_BASE_URL=EMPTY), which must reproduce the first run from cache.
+        # Any call that failed in the first run left no cache entry, so a first run
+        # with 26 transport failures in one batch, one server restart drops more
+        # than that, would replay as a constant, all-zero leaderboard. With the
+        # breaker off the misses simply fail one by one, which with EMPTY happens
+        # before any I/O, and every hit is kept.
         _apply_tuning({"MAX_ATTEMPTS": "1", "TIMEOUT_S": "5",
                        "COOLDOWN_CAP_S": "0", "MAX_BACKOFF_S": "0",
-                       "BATCH_MAX_FAILURES": "25"})
+                       "BATCH_MAX_FAILURES": "none"})
     else:
         # Defaults tuned for a reasoning model behind a local server, which is
         # what the organizers run submitted code against. Measured, not guessed:

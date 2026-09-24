@@ -66,6 +66,7 @@ class CorroborateJudge:
         self._enc_sig: Optional[tuple] = None
         self._pools: Dict[str, TopicPool] = {}
         self._pool_sig: Optional[tuple] = None
+        self._scratch_cache: Optional[str] = None
 
     # ------------------------------------------------------------------ helpers
 
@@ -100,6 +101,24 @@ class CorroborateJudge:
         elif hf_home:
             log.info("hf_home %s does not exist here, leaving HF_HOME alone", hf_home)
         cache_dir = getattr(llm_config, "cache_dir", None) if llm_config else None
+        if cache_dir is None:
+            # No CACHE_DIR, which is exactly the organizers' graded run: the code
+            # submission mounts one only for LLM judges. Without a cache the score
+            # cache switched itself off, so every cited document chunk was embedded
+            # again for every (sentence, document) pair that cited it, and every
+            # sentence pooling had already embedded was embedded again in scoring.
+            # A document cited by many of rag26's 83 runs paid that each time. Our
+            # 8.5 h CPU timing on rag25-gen was WITH a cache, so the graded run
+            # would have been far slower than anything we measured, estimated at
+            # days on rag26. One scratch directory per process fixes it, shared by
+            # both phases so the signature below stays stable between them. The
+            # cache is content addressed, so results are unchanged, and every
+            # read and write is guarded, so a full disk only costs speed.
+            if self._scratch_cache is None:
+                import tempfile
+                self._scratch_cache = tempfile.mkdtemp(prefix="corroborate-cache-")
+                log.info("no CACHE_DIR set, using scratch score cache %s", self._scratch_cache)
+            cache_dir = self._scratch_cache
         sig = (bi_encoder, cross_encoder, str(cache_dir), device)
         if self._encoders is None or self._enc_sig != sig:
             if self._encoders is not None:

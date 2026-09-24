@@ -129,8 +129,11 @@ disclosure of it.
 | `NF1_RANK` | within-topic percentile rank of `NF1` |
 | `CITE` | citation support, from inline documents where present, else pooled agreement |
 
-`ragtime26` documents come from NeuCLIR and are not all English, so a multilingual
-reranker is available there in place of the English NLI model.
+RAGTIME draws on NeuCLIR, so we expected non-English documents and built a
+`multilingual` variant for them. Both 2026 releases turned out to be English, so the
+submitted `best` configuration uses the English NLI model on both test sets. The
+multilingual reranker is not baked into the image, so that variant runs only
+locally or with the model mounted.
 
 ### Why a pool-derived bank is not circular
 
