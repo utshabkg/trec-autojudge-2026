@@ -227,6 +227,25 @@ NuggetRecall wins on both, so it is our main submission.
    than the number: warn whenever a filter keeps everything or nothing, and report
    the range actually observed. **[done]**
 
+10. **Two different LLM judges agree best about the top of the leaderboard.** We
+    combined the Qwen3-30B and gpt-oss-20b judgments with equal weight, ranking systems
+    within each topic by each model and averaging the two ranks. No weights were
+    fitted. On the pilots:
+
+    | | rag25-gen Kendall | rag25-gen **tau AP-b** | ragtime25 Kendall | ragtime25 tau AP-b |
+    |---|---|---|---|---|
+    | Qwen3-30B, best single measure | 0.801 | 0.628 | 0.739 | 0.599 |
+    | gpt-oss-20b | 0.783 | 0.622 | **0.789** | **0.617** |
+    | Both, equal weight | **0.812** | **0.695** | 0.769 | 0.605 |
+
+    On short answers the ensemble's Kendall gain is within noise, but its top-weighted
+    score rises by 0.067, far more than the run-to-run variation we saw on that
+    measure. tau AP-b mostly rewards getting the best systems right, so two judges
+    that err differently seem to cancel out each other's mistakes at the top. On long
+    reports gpt-oss alone is clearly better, and averaging it with a weaker judge only
+    dilutes it. So we submit the ensemble for rag26 and gpt-oss alone for ragtime26.
+    Choosing per track from two pilots risks some overfitting, and we say so.
+
 ---
 
 ## 5b. A caution on every number above

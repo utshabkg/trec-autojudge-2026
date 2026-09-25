@@ -861,6 +861,24 @@ team can gain from its own runs.
   minutes. On rag25-gen the two models tie. Since the choice rests on the pilot, which
   is what the pilots are for, we started gpt-oss on ragtime26 for an additional data
   submission.
+- **Two-model ensemble.** Equal-weight rank fusion of NR_VITAL from Qwen3-30B and
+  gpt-oss-20b (`fuse_leaderboards.py --weight 0.5`), no weights fitted. rag25-gen:
+  0.812 Kendall and **0.695 tau AP-b**, rank 33 of 113, against 0.801 and 0.628 for
+  the best single configuration. The Kendall gain is inside the noise, the tau gain of
+  0.067 is not. ragtime25: 0.769 and 0.605, worse than gpt-oss alone (0.789, 0.617),
+  since averaging dilutes the stronger judge there. Decision: ensemble for rag26 (needs
+  a gpt-oss rag26 run first), gpt-oss alone for ragtime26 (already submitted as
+  `nuggetrecall-gptoss`). A per-track choice from two pilots, which is a real
+  overfitting risk, stated in the paper notes.
+- **Additional data submission on ragtime26: `nuggetrecall-gptoss`**, gpt-oss-20b,
+  all 49 runs over 103 topics, 5 measures. 163 of 5,041 judgments unreadable (3.2%)
+  and 3 of 103 topics on a title-only key, the same profile as the pilot that ranked
+  10th. TIRA records the model this time.
+- **The sync script deleted results a third time**, `upload-rank/` (regenerated
+  exactly, and already on TIRA), and its pull would have stranded most result
+  folders. Both fixed structurally rather than by extending a list: push deletes only
+  inside git-tracked directories, pull fetches every directory git does not track.
+  Proven with planted probes before use.
 - **Two more reviews before submitting.** The first, of the real submission path,
   found the dirty-tree failure, the replay breaker, the four-second patience,
   Corroborate's missing cache in the graded run, and a guard that skipped
