@@ -28,6 +28,26 @@ cd "$(dirname "$0")/.."
 
 ENV_BIN="${AUTOJUDGE_ENV_BIN:-$HOME/miniforge3/envs/autojudge/bin}"
 
+# Every process that belongs to a judge run, matched on exact argv fields rather
+# than a substring, so a command line that merely mentions these names (an ssh
+# check, a grep) can never match itself, which bit four times.
+#
+# The auto-judge line is the one that matters most. run_all_datasets.py runs the
+# judge as a CHILD process, `.../bin/auto-judge run ...`, whose command line
+# contains neither run_all_datasets.py nor run_on_node.sh. So killing those two
+# left the actual judge running as an orphan, still writing into the same log and
+# the same output directory. It happened on 2026-09-25: a "stopped" 4,096-token
+# run kept going for eleven minutes beside its replacement and overwrote the
+# replacement's leaderboard. It is also the likeliest real cause of the two-judges
+# collision on 2026-09-22.
+judge_procs() {
+    ps -u "$(id -u)" -o pid=,sid=,args= | awk '
+        ($3=="bash" && $4 ~ /run_on_node\.sh$/ && $5=="_run") ||
+        ($3 ~ /(^|\/)python[0-9.]*$/ && $4=="run_all_datasets.py") ||
+        ($4 ~ /(^|\/)auto-judge$/ && $5=="run") ||
+        ($3 ~ /(^|\/)auto-judge$/ && $4=="run") { print }'
+}
+
 case "${1:-}" in
 launch)
     shift
@@ -50,9 +70,7 @@ launch)
     # `grep -v "bash -c"` matters: an ssh command whose text mentions the script
     # matches a naive pgrep, so a check can report a phantom job, or hide a real
     # one behind a count you misread. Ask for the list, never just the count.
-    RUNNING=$(ps -eo pid,cmd --no-headers \
-        | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
-        | grep -v "bash -c" | grep -v grep || true)
+    RUNNING=$(judge_procs)
     if [ -n "$RUNNING" ]; then
         echo "refusing to launch, a run is already going:" >&2
         echo "$RUNNING" >&2
@@ -63,22 +81,18 @@ launch)
     echo "launched pid $! judge=$JUDGE variant=$VARIANT out=$OUT datasets: $*"
     ;;
 stop)
-    # Parent first. _run loops over datasets, so killing only the python child
-    # just advances the loop to the next dataset and looks like it worked.
-    pkill -f "run_on_node.sh _run" 2>/dev/null || true
-    sleep 1
-    pkill -f "run_all_datasets.py" 2>/dev/null || true
-    sleep 3
-    LEFT=$(ps -eo pid,cmd --no-headers \
-        | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
-        | grep -v "bash -c" | grep -v grep || true)
-    if [ -n "$LEFT" ]; then
-        echo "$LEFT" | awk '{print $1}' | xargs -r kill -9
-        sleep 2
-        LEFT=$(ps -eo pid,cmd --no-headers \
-            | grep -E "run_all_datasets\.py|run_on_node\.sh _run" \
-            | grep -v "bash -c" | grep -v grep || true)
-    fi
+    # Kill every judge process, the auto-judge children included (see
+    # judge_procs). Each run is started with setsid, so its session holds the
+    # wrapper, run_all_datasets.py and the judge. Killing the session gets all
+    # three at once, and the list catches any orphan whose session is gone.
+    for sid in $(judge_procs | awk '{print $2}' | sort -u); do
+        pkill -TERM -s "$sid" 2>/dev/null || true
+    done
+    judge_procs | awk '{print $1}' | xargs -r kill -TERM 2>/dev/null || true
+    sleep 4
+    judge_procs | awk '{print $1}' | xargs -r kill -9 2>/dev/null || true
+    sleep 2
+    LEFT=$(judge_procs)
     [ -z "$LEFT" ] && echo "CLEAN: no judge processes" || { echo "STILL RUNNING:"; echo "$LEFT"; exit 1; }
     ;;
 _run)
@@ -109,6 +123,10 @@ _run)
         echo "=== $ds exit $? after $((SECONDS - S))s ==="
     done
     echo "=== ALL DONE $(date -Is) ==="
+    ;;
+procs)
+    # What stop would kill, and what launch would refuse on. Changes nothing.
+    judge_procs
     ;;
 status)
     for f in node-run*.log; do [ -e "$f" ] && { echo "--- $f"; cat "$f"; }; done

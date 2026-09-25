@@ -879,6 +879,24 @@ team can gain from its own runs.
   (first attempts replay from cache). **The finisher is relaunched and running**: it
   waits for this run, gates at 10% unreadable, builds the ensemble and uploads it once.
   Do not start a second finisher.
+- **Root cause of both "two judges at once" incidents: the stop left an orphan.**
+  run_all_datasets.py runs the judge as a child process, `.../bin/auto-judge run`,
+  whose command line contains neither run_all_datasets.py nor run_on_node.sh. The
+  stop killed those two and left the actual judge running. On 2026-09-25 the
+  "stopped" 4,096-token rag26 run kept going eleven minutes beside its replacement,
+  writing into the same log and, at 04:01, overwriting the replacement's
+  best.eval.txt. The launch guard missed it for the same reason. On 2026-09-22 I
+  blamed the collision on misreading `pgrep -c`, which was true but not the whole
+  story. Fixed in run_on_node.sh: one `judge_procs` matcher by exact argv covering
+  the wrapper, run_all_datasets.py and the auto-judge child, used by the guard and by
+  stop, which now kills each run's whole setsid session. Checked read-only against
+  the live run: it lists exactly its three processes, one session, and not the ssh
+  command that named all three. Nothing reached TIRA: the finisher keys on the
+  replacement's own "ALL DONE" line, and the replacement overwrites the file when it
+  ends.
+- **Clean baseline from the orphan, by accident**: with 4,096 tokens on every
+  attempt, gpt-oss on rag26 ended at **1,224 of 9,838 unreadable (12.4%)** after three
+  passes. The escalated run's final count is the number to compare against.
 - **Corroborate ran on both test sets for the first time**, on the GPU: rag26 in 73
   minutes and ragtime26 in 22, complete (83 runs over 119 topics, 49 over 103), no
   errors, and the specificity gate did not report itself inert. Uploaded to both test
