@@ -130,12 +130,14 @@ class FakeLLM:
     def __init__(self, gen=KEY, judge="1: support\n2: partial\n3: no", fail_first=0):
         self.gen, self.judge_reply, self.fail_first = gen, judge, fail_first
         self.prompts = []
+        self.budgets = []
         self.calls = 0
 
     def run(self, backend, jobs, *, max_tokens, temperature):
         out = {}
         for rid, msgs in jobs:
             self.prompts.append((rid, msgs[-1]["content"]))
+            self.budgets.append((rid, max_tokens))
             self.calls += 1
             if rid.startswith("gen:"):
                 out[rid] = self.gen
@@ -779,3 +781,34 @@ def test_derived_nr_rank_uses_the_judges_two_conventions():
     assert agg["a"] == pytest.approx((1.0 + 0.0) / 2)
     assert agg["b"] == pytest.approx((0.5 + 1.0) / 2)
     assert agg["c"] == pytest.approx((0.0 + 0.0) / 2), "absence counts as 0.0, not skipped"
+
+
+
+# ------------------------------------------------------- retry reply budget
+
+
+def test_the_reply_budget_grows_on_retries_and_never_shrinks():
+    assert [J._budget_for(a, 4096) for a in range(4)] == [4096, 8192, 16384, 16384]
+    # An operator who configured a larger budget is never cut back.
+    assert [J._budget_for(a, 20000) for a in range(3)] == [20000, 20000, 20000]
+    assert J._budget_for(1, 1024) == 2048
+
+
+def test_a_retry_gets_more_room_to_think(monkeypatch):
+    """Regression for gpt-oss on rag26: 27% of first-pass judgments unreadable.
+
+    5,020 of 13,275 requests ended with finish_reason "length": the reasoning model
+    spent its whole budget thinking and never wrote the answer. Retries used to send
+    the same 4,096 tokens, so hard cases ran out again. The first attempt must keep
+    the configured budget exactly, since max_tokens is part of the prompt-cache key
+    and every lodged run and the CI rehearsal depend on those keys still hitting.
+    """
+    llm = FakeLLM(fail_first=1)
+    monkeypatch.setattr(J, "_run", llm.run)
+    monkeypatch.setattr(J, "_llm_backend", lambda cfg: object())
+    _run_judge([_report("r1", "a", ["Bees collect nectar."])], [TOPIC])
+    judged = {rid.rsplit(":", 1)[1]: mt for rid, mt in llm.budgets if rid.startswith("judge:")}
+    assert judged["0"] == 4096, "the first attempt changed budget, so every cached key misses"
+    assert judged["1"] == 8192, "the retry got no more room than the attempt that ran out"
+    gen = {rid.rsplit(":", 1)[1]: mt for rid, mt in llm.budgets if rid.startswith("gen:")}
+    assert gen["0"] == 4096

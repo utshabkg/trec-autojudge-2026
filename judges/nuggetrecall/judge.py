@@ -401,6 +401,32 @@ def _with_suffix(msgs: List[Dict[str, str]], attempt: int) -> List[Dict[str, str
     return head + [last]
 
 
+# The reply budget grows on retries, because the commonest reason a reply cannot be
+# read is that a reasoning model ran out of budget while still thinking and never
+# wrote the answer. Measured on rag26 with gpt-oss-20b: 5,020 of 13,275 requests
+# ended with finish_reason "length", 2,692 of 9,838 first-pass judgments (27%) were
+# unreadable, and because every retry used the same 4,096 tokens the hard cases just
+# ran out again. Rewording the prompt, which is all a retry used to do, cannot help a
+# model that needed more room.
+#
+# The first attempt keeps the configured budget exactly. That is what keeps every
+# existing prompt cache valid, since max_tokens is part of the cache key: the lodged
+# submissions, the CI rehearsal's warmed cache, and any replay all hit as before.
+# The schedule is fixed, so a replay rebuilds the same retry keys and still hits.
+_RETRY_BUDGET_FACTORS = (1, 2, 4)
+_MAX_REPLY_BUDGET = 16384
+
+
+def _budget_for(attempt: int, base: int) -> int:
+    """Reply budget for this attempt: the configured value, then doubled, then 4x.
+
+    Never below the configured value, so an operator who set a large budget is not
+    cut back, and capped so a long prompt plus the reply still fits a 32k context.
+    """
+    factor = _RETRY_BUDGET_FACTORS[min(attempt, len(_RETRY_BUDGET_FACTORS) - 1)]
+    return max(base, min(base * factor, _MAX_REPLY_BUDGET))
+
+
 class NuggetRecallJudge:
     """Query-derived nugget recall."""
 
@@ -445,7 +471,8 @@ class NuggetRecallJudge:
                      _with_suffix(generation_messages(requests[tid], min_nuggets, max_nuggets),
                                   attempt))
                     for tid in pending]
-            replies = _run(backend, jobs, max_tokens=max_tokens_generate, temperature=temperature)
+            replies = _run(backend, jobs, max_tokens=_budget_for(attempt, max_tokens_generate),
+                           temperature=temperature)
             still = []
             for tid in pending:
                 ns = parse_nuggets(replies.get(f"gen:{tid}:{attempt}") or "", max_nuggets)
@@ -558,7 +585,8 @@ class NuggetRecallJudge:
                 break
             jobs = [(f"judge:{run}:{tid}:{attempt}", _with_suffix(msgs, attempt))
                     for run, tid, msgs, _ in pending]
-            replies = _run(backend, jobs, max_tokens=max_tokens_judge, temperature=temperature)
+            replies = _run(backend, jobs, max_tokens=_budget_for(attempt, max_tokens_judge),
+                           temperature=temperature)
             still = []
             for (run, tid, msgs, count) in pending:
                 lab = parse_judgments(replies.get(f"judge:{run}:{tid}:{attempt}") or "", count)
