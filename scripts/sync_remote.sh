@@ -70,11 +70,18 @@ push)
     ;;
 pull)
     echo ">> outputs <- $HOST:$REMOTE"
-    # Every results directory, by prefix, not a fixed pair. The old list was
-    # output and metaeval only, so output-gate, output-gptoss, output-rank,
-    # fusion and the rest would have stayed stranded on the node.
+    # Every top-level directory the node created, meaning anything git does not
+    # track, minus inputs and caches. Not a list of names: the first version
+    # pulled output and metaeval only, and the second a list of prefixes, and
+    # both stranded the next new folder (output-gate, fusion, then ensemble).
+    # This mirrors push, which by the same rule never deletes such a folder.
+    tracked=" $(tracked_dirs | tr '\n' ' ') "
     for d in $(ssh -o BatchMode=yes "$HOST" \
-            "cd '$REMOTE' && ls -d output* upload* fusion metaeval 2>/dev/null" </dev/null); do
+            "cd '$REMOTE' && find . -mindepth 1 -maxdepth 1 -type d -printf '%f\n'" </dev/null); do
+        case "$d" in
+            .git|local-data*|cache|.hf|models|__pycache__|.pytest_cache|*.egg-info) continue ;;
+        esac
+        [[ "$tracked" == *" $d "* ]] && continue
         echo "   $d"
         rsync -az "$HOST:$REMOTE/$d/" "$HERE/$d/"
     done
