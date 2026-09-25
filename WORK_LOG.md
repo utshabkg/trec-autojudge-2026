@@ -861,6 +861,24 @@ team can gain from its own runs.
   minutes. On rag25-gen the two models tie. Since the choice rests on the pilot, which
   is what the pilots are for, we started gpt-oss on ragtime26 for an additional data
   submission.
+- **gpt-oss on rag26 ran out of room to think.** 2,692 of 9,838 first-pass
+  judgments (27%) unreadable, 1,671 still unreadable after the second pass, against
+  0.75% final on the rag25-gen pilot. vLLM's counters for that run: 8,255 requests
+  ended with finish_reason "stop" and 5,020 with "length", meaning the model spent its
+  whole 4,096-token reply budget reasoning and never wrote the answer. Prompts
+  averaged 1,675 tokens, so long inputs are not the cause. Retries sent the same
+  budget with reworded text, which cannot help. The unattended finisher was stopped
+  before any upload, since an ensemble on that half is not what the pilot validated.
+- **Fix, commit 79983a6: retries get 2x then 4x the reply budget** (4,096, 8,192,
+  16,384, capped for a 32k context, never below an operator's own value). The first
+  attempt is unchanged, so every existing prompt cache still hits. Two tests, both
+  checked to fail on the previous code. The registered NuggetRecall code submission,
+  `rank-dioptre`, predates this.
+- **rag26 re-run with the fix started 03:50 on 2026-09-25**, into output-gptoss, with
+  the old answer keys and log moved to `attic/` on the node so the keys regenerate
+  (first attempts replay from cache). **The finisher is relaunched and running**: it
+  waits for this run, gates at 10% unreadable, builds the ensemble and uploads it once.
+  Do not start a second finisher.
 - **Corroborate ran on both test sets for the first time**, on the GPU: rag26 in 73
   minutes and ragtime26 in 22, complete (83 runs over 119 topics, 49 over 103), no
   errors, and the specificity gate did not report itself inert. Uploaded to both test
