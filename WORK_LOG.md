@@ -894,6 +894,13 @@ team can gain from its own runs.
   command that named all three. Nothing reached TIRA: the finisher keys on the
   replacement's own "ALL DONE" line, and the replacement overwrites the file when it
   ends.
+- **The finisher was relaunched at 04:31 with one parsing change** (kept in
+  `scripts/finish_rag26_ensemble.sh`, a one-off that runs from the node's top level).
+  The orphan left its own "1,224 of 9,838 stayed unparsable" line in the run log after
+  the replacement's output, and the finisher read counts with `tail -1`, so it could
+  have gated on the orphan's number. The replacement writes from offset 0, so its
+  line always comes first: the finisher now uses `head -1`. Anyone reading that log
+  by hand should do the same.
 - **Clean baseline from the orphan, by accident**: with 4,096 tokens on every
   attempt, gpt-oss on rag26 ended at **1,224 of 9,838 unreadable (12.4%)** after three
   passes. The escalated run's final count is the number to compare against.
