@@ -6,6 +6,7 @@
 # to the compute node. The node runs jobs. Code goes out, results come back.
 #
 #   bash scripts/sync_remote.sh push        code and data to the node
+#   bash scripts/sync_remote.sh push --preview   show what push would change
 #   bash scripts/sync_remote.sh pull        outputs back to this PC
 #   bash scripts/sync_remote.sh pull-cache  also the score caches (large, optional)
 #   bash scripts/sync_remote.sh status      what differs, changes nothing
@@ -25,21 +26,41 @@ CODE_EXCLUDES=(
     --exclude 'output*/' --exclude cache/ --exclude .hf/
     --exclude metaeval/ --exclude models/ --exclude fusion/
     --exclude __pycache__/ --exclude '*.egg-info/' --exclude .pytest_cache/
-    # Anything produced ON the node must be listed above, or --delete removes it
-    # simply because it does not exist here. vllm.log went first, from under a
-    # live server. fusion/ went next, three built leaderboards, minutes before
-    # they were due to be uploaded. If you make the node write somewhere new,
-    # add it here in the same commit.
     --exclude '*.log'
 )
 
+# Why push no longer runs --delete over the whole tree.
+#
+# It used to, protected only by the exclude list above, so anything the node
+# wrote that nobody had remembered to list was deleted by the next code push,
+# simply because it did not exist here. That happened three times: vllm.log from
+# under a live server, then fusion/ minutes before its leaderboards were due to
+# be uploaded, then upload-rank/. A list someone must remember to extend fails
+# again the next time someone forgets. So --delete now runs only inside
+# directories that git tracks. A code file removed here is still removed there,
+# and anything the node creates anywhere else cannot be touched by a push.
+tracked_dirs() {
+    git -C "$HERE" ls-files | cut -d/ -f1 | sort -u | while read -r p; do
+        [ -d "$HERE/$p" ] && echo "$p"
+    done
+}
+
 case "${1:-}" in
 push)
+    DRY=()
+    [ "${2:-}" = "--preview" ] && { DRY=(-n -i); echo ">> PREVIEW, nothing is changed"; }
     echo ">> code -> $HOST:$REMOTE"
-    # --delete on code only, so a file removed here is removed there. .git goes
-    # too, which keeps the node a real repository (tira and two of the tests read
-    # git metadata) but carries no credentials: those live in ~/.git-credentials.
-    rsync -az --delete "${CODE_EXCLUDES[@]}" "$HERE/" "$HOST:$REMOTE/"
+    # Everything, with no --delete, so nothing on the node is ever removed here.
+    rsync -az "${DRY[@]}" "${CODE_EXCLUDES[@]}" "$HERE/" "$HOST:$REMOTE/"
+    # Then --delete, but only inside directories git tracks. See tracked_dirs.
+    for d in $(tracked_dirs); do
+        rsync -az --delete "${DRY[@]}" "${CODE_EXCLUDES[@]}" "$HERE/$d/" "$HOST:$REMOTE/$d/"
+    done
+    # .git mirrors exactly, which keeps the node a real repository (tira and two
+    # of the tests read git metadata). It carries no credentials: those live in
+    # ~/.git-credentials here, and checkout never writes them into .git/config.
+    rsync -az --delete "${DRY[@]}" "$HERE/.git/" "$HOST:$REMOTE/.git/"
+    [ ${#DRY[@]} -gt 0 ] && { echo ">> preview done"; exit 0; }
 
     echo ">> data -> $HOST:$REMOTE/local-data"
     # -L follows the local-data symlink so the node gets real files. No --delete:
@@ -49,10 +70,13 @@ push)
     ;;
 pull)
     echo ">> outputs <- $HOST:$REMOTE"
-    for d in output metaeval; do
-        if ssh -o BatchMode=yes "$HOST" "test -d '$REMOTE/$d'"; then
-            rsync -az --info=progress2 "$HOST:$REMOTE/$d/" "$HERE/$d/"
-        fi
+    # Every results directory, by prefix, not a fixed pair. The old list was
+    # output and metaeval only, so output-gate, output-gptoss, output-rank,
+    # fusion and the rest would have stayed stranded on the node.
+    for d in $(ssh -o BatchMode=yes "$HOST" \
+            "cd '$REMOTE' && ls -d output* upload* fusion metaeval 2>/dev/null" </dev/null); do
+        echo "   $d"
+        rsync -az "$HOST:$REMOTE/$d/" "$HERE/$d/"
     done
     # Log files written by runs on the node.
     rsync -az --include='*.log' --exclude='*' "$HOST:$REMOTE/" "$HERE/" 2>/dev/null || true
