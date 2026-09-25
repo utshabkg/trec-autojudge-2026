@@ -118,7 +118,7 @@ scores come out after TREC.
 | `nuggetrecall-best` | NuggetRecall, Qwen3-30B | **[done]** | **[done]** | the main submission |
 | `nuggetrecall-rank` | same judgments, plus the rank measure | **[done]** | **[done]** | better on the rag pilot, never worse |
 | `nuggetrecall-gptoss` | NuggetRecall, gpt-oss-20b | | **[done]** | best single judge on the ragtime pilot |
-| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[pending]** | | best top-weighted score on the rag pilot |
+| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[pending]** built and verified, upload waiting out a TIRA outage | | best top-weighted score on the rag pilot |
 | `corroborate-best` | Corroborate, no LLM | **[done]** | **[done]** | the LLM-free method, for comparison |
 
 **Code submissions [done].** Both judges are registered on TIRA, NuggetRecall as
@@ -255,6 +255,18 @@ wherever the real run would.
     reports gpt-oss alone is clearly better, and averaging it with a weaker judge only
     dilutes it. So we submit the ensemble for rag26 and gpt-oss alone for ragtime26.
     Choosing per track from two pilots risks some overfitting, and we say so.
+
+11. **A reasoning model can run out of room to think, and a retry must give it more.**
+    On rag26, gpt-oss-20b left 27% of its first-pass judgments unreadable. The LLM
+    server's own counters showed why: 5,020 of 13,275 requests stopped because they
+    hit the 4,096-token reply limit, so the model was still reasoning and never wrote
+    its answer. Our retries used to reword the prompt and send the same budget, which
+    cannot help. With the budget fixed at 4,096 on every attempt, 12.4% of judgments
+    stayed unreadable after three tries. Giving retries 8,192 and then 16,384 tokens
+    cut that to **2.7%**, 264 of 9,838, with no other change. The first attempt keeps
+    its original budget, so every cached reply still counts. The same model on the
+    rag25-gen pilot had needed almost no retries, so this only showed up on the test
+    data, which is a reason to watch retry counts rather than trust a pilot.
 
 ---
 

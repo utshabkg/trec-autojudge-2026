@@ -40,8 +40,12 @@ CODE_EXCLUDES=(
 # directories that git tracks. A code file removed here is still removed there,
 # and anything the node creates anywhere else cannot be touched by a push.
 tracked_dirs() {
+    # `if`, not `[ -d ] && echo`: the && form leaves the loop's status at 1 when the
+    # last entry is a file, and `tracked=$(tracked_dirs)` under set -e then exits
+    # the script silently. That is exactly how the first new pull did nothing while
+    # push, which calls this inside a for list where set -e does not apply, worked.
     git -C "$HERE" ls-files | cut -d/ -f1 | sort -u | while read -r p; do
-        [ -d "$HERE/$p" ] && echo "$p"
+        if [ -d "$HERE/$p" ]; then echo "$p"; fi
     done
 }
 

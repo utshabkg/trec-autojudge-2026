@@ -879,6 +879,38 @@ team can gain from its own runs.
   (first attempts replay from cache). **The finisher is relaunched and running**: it
   waits for this run, gates at 10% unreadable, builds the ensemble and uploads it once.
   Do not start a second finisher.
+- **Escalated rag26 run finished 07:08: 264 of 9,838 unreadable (2.7%)**, against
+  1,224 (12.4%) with 4,096 tokens on every attempt. Pass by pass: 2,666 unreadable
+  after the first (same budget, replayed from cache), 1,054 after the second at
+  8,192, against 1,671 at 4,096, then 264 after the third at 16,384. No fallback
+  answer keys, no failed calls. The ensemble passed every check and is byte-identical
+  to a fresh rebuild from the final files.
+- **Another self-inflicted problem: I overwrote a running script in place.** The
+  stop-orphan fix was copied to the node with scp while that run's wrapper was
+  still executing the old run_on_node.sh. Bash reads a script as it goes, so when
+  the wrapper's loop ended it read on from its old byte offset into the new file,
+  re-ran the (fully cached) judge for 17 seconds, rewriting best.eval.txt at 07:08:55,
+  and died on a syntax error. The rewrite was identical, which the diff above
+  confirms. rsync replaces a file by rename, which a running bash survives, so
+  sync_remote.sh was always safe, and the lesson is to never scp over a script that
+  might be running.
+- **Everything is back on this PC**, as asked at the start: all 15 result folders and
+  the caches. The first attempt silently did nothing. `tracked_dirs` ended on a
+  failing `[ -d ] && echo`, so `tracked=$(tracked_dirs)` returned 1 and `set -e`
+  killed the script after its first line, while my own `| tail` hid the exit code.
+  Push had worked only because it calls the function inside a `for` list, where
+  `set -e` does not apply. Fixed with an `if`, proven under `set -euo pipefail`, and
+  re-run with the real exit code checked: 0.
+- **Four result folders were not gitignored**: ensemble, fusion, upload-rank and attic,
+  which hold test-set leaderboards and answer keys. Every commit so far named its
+  paths, so nothing leaked, but a plain `git add -A` would have pushed them. Ignored
+  now.
+- **TIRA's API went down with HTTP 500 during the upload**, twice, failing in
+  tira-cli's first call (metadata_for_task) before our files were touched. The
+  finisher refused to claim success and uploaded nothing. `retry_rag26_upload.sh`
+  on the node now retries every 10 minutes for up to 12 hours, uploads at most once,
+  and writes the marker only on tira-cli's own confirmation. vLLM is stopped and the
+  GPU is free.
 - **Root cause of both "two judges at once" incidents: the stop left an orphan.**
   run_all_datasets.py runs the judge as a child process, `.../bin/auto-judge run`,
   whose command line contains neither run_all_datasets.py nor run_on_node.sh. The

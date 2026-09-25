@@ -127,3 +127,11 @@ __marimo__/
 # CI scratch space, kept out of the checkout on purpose (tira refuses a dirty tree)
 /.hf/
 /ci-warm/
+
+# Result folders the compute node writes and sync_remote.sh pulls back. They hold
+# test-set leaderboards and answer keys, so they must never be committed. output*/
+# and *cache/ were covered above, these were not, until a pull brought them here.
+/ensemble/
+/fusion/
+/upload-rank/
+/attic/
