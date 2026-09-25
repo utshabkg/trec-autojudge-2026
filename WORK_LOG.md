@@ -894,6 +894,15 @@ team can gain from its own runs.
   confirms. rsync replaces a file by rename, which a running bash survives, so
   sync_remote.sh was always safe, and the lesson is to never scp over a script that
   might be running.
+- **Maik Froebe started our code submissions on TIRA**, rank-dioptre and lead-racer,
+  before grave-node existed, so we asked him to run grave-node as our main NuggetRecall.
+  Useful facts from him: the LLMs run on vLLM in default configuration, there are no
+  fixed time or memory limits, workers have 4 CPU cores and 40 GB RAM (some with a
+  10 GB A100 slice, bigger on request), and jobs of 2 to 3 days are safe while a week or
+  more risks interruption. He expects lead-racer to take about 3 days on CPU. We
+  declined a GPU build for it: it would need a CUDA torch image and a new submission to
+  gain speed only. Evalbase shows nothing to sign for the dissemination agreement, so it
+  is on file.
 - **Second NuggetRecall code submission registered as `grave-node`**, with retry
   budget escalation. Rehearsed first on commit 4b963a8 (run 36137025032: 95 tests,
   clean tree, guard OK, replay reproduced), then submitted from 35cd67b, which differs
