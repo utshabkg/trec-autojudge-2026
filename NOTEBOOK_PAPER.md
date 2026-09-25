@@ -107,19 +107,29 @@ so they are read on the date shown.
 rag25-gen is the pilot most like rag26, and ragtime25 the one most like ragtime26.
 NuggetRecall wins on both, so it is our main submission.
 
-### What we submitted **[done]**
+### What we submitted
 
-- **Data submission:** NuggetRecall on rag26 and ragtime26, complete for every run and
-  topic. Scores on the test sets come out after TREC.
-- **Code submission, rehearsed **[done]**:** both judges build as containers and pass
-  every TIRA check on a dry run. We had to fix the rehearsal itself first: it gave
-  the container no LLM to call, so the judge fell back, produced an all-zero
-  leaderboard, and every check still passed. The container now calls a stub endpoint
-  and the job fails if the leaderboard does not separate systems.
-- **Second data submission **[done]**:** `nuggetrecall-rank`, the same judge with a
-  fifth measure, on both test sets. It reuses the judgments already submitted, so
-  the other four measures are byte identical and the score cannot go down.
-- **[pending]** the real code submissions, and Corroborate as a third data submission.
+Every submission covers every run and every topic of its test set, which the upload
+guard checks before anything is sent, since a partial submission is rejected. Test-set
+scores come out after TREC.
+
+| System | Judge and LLM | rag26 | ragtime26 | Why |
+|---|---|---|---|---|
+| `nuggetrecall-best` | NuggetRecall, Qwen3-30B | **[done]** | **[done]** | the main submission |
+| `nuggetrecall-rank` | same judgments, plus the rank measure | **[done]** | **[done]** | better on the rag pilot, never worse |
+| `nuggetrecall-gptoss` | NuggetRecall, gpt-oss-20b | | **[done]** | best single judge on the ragtime pilot |
+| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[pending]** | | best top-weighted score on the rag pilot |
+| `corroborate-best` | Corroborate, no LLM | **[done]** | **[done]** | the LLM-free method, for comparison |
+
+**Code submissions [done].** Both judges are registered on TIRA, NuggetRecall as
+`rank-dioptre` and Corroborate as `lead-racer`, so the organizers can re-run them,
+NuggetRecall against their own choice of LLM. Getting there took more than the
+judges did. The rehearsal first gave the container no LLM at all, so the judge fell
+back to an all-zero leaderboard and every TIRA check still passed. Then two
+independent reviews of the real submission path found that it would have failed
+outright on deadline day, because TIRA refuses an untidy working folder only on a
+real submission, never on a rehearsal. Both are fixed, and the rehearsal now fails
+wherever the real run would.
 
 ---
 
