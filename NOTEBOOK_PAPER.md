@@ -118,7 +118,7 @@ scores come out after TREC.
 | `nuggetrecall-best` | NuggetRecall, Qwen3-30B | **[done]** | **[done]** | the main submission |
 | `nuggetrecall-rank` | same judgments, plus the rank measure | **[done]** | **[done]** | better on the rag pilot, never worse |
 | `nuggetrecall-gptoss` | NuggetRecall, gpt-oss-20b | | **[done]** | best single judge on the ragtime pilot |
-| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[pending]** built and verified, upload waiting out a TIRA outage | | best top-weighted score on the rag pilot |
+| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[done]** | | best top-weighted score on the rag pilot |
 | `corroborate-best` | Corroborate, no LLM | **[done]** | **[done]** | the LLM-free method, for comparison |
 
 **Code submissions [done].** Both judges are registered on TIRA, NuggetRecall as

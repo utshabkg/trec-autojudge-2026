@@ -894,6 +894,11 @@ team can gain from its own runs.
   confirms. rsync replaces a file by rename, which a running bash survives, so
   sync_remote.sh was always safe, and the lesson is to never scp over a script that
   might be running.
+- **rag26 ensemble uploaded, `ensemble-qwen-gptoss`**, at 07:54 on 2026-09-25, by
+  the retrier's fifth try, seven minutes after TIRA's API came back from its HTTP 500
+  outage (roughly 07:09 to 07:47). TIRA lists it exactly once, beside our other three
+  rag26 systems, each also once. The submission table in NOTEBOOK_PAPER.md is now
+  complete for both test sets.
 - **Everything is back on this PC**, as asked at the start: all 15 result folders and
   the caches. The first attempt silently did nothing. `tracked_dirs` ended on a
   failing `[ -d ] && echo`, so `tracked=$(tracked_dirs)` returned 1 and `set -e`
