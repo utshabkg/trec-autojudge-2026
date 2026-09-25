@@ -861,6 +861,17 @@ team can gain from its own runs.
   minutes. On rag25-gen the two models tie. Since the choice rests on the pilot, which
   is what the pilots are for, we started gpt-oss on ragtime26 for an additional data
   submission.
+- **Corroborate ran on both test sets for the first time**, on the GPU: rag26 in 73
+  minutes and ragtime26 in 22, complete (83 runs over 119 topics, 49 over 103), no
+  errors, and the specificity gate did not report itself inert. Uploaded to both test
+  sets as `corroborate-best`. This was deliberately done before registering its code,
+  since the pre-submission review found it had never touched the real data.
+- **Corroborate's code submission is registered on TIRA as `lead-racer`**, CI run
+  36094673552 on commit 2652747. Nothing that goes into the image changed after the
+  validated dry run at 86317c3, only docs and the sync script. The guard read its
+  output at `/tmp/tira-j4u6pj_m`, a name with an underscore that the original guard
+  would have skipped. **Both code submissions are now in**: NuggetRecall as
+  `rank-dioptre`, Corroborate as `lead-racer`.
 - **Two-model ensemble.** Equal-weight rank fusion of NR_VITAL from Qwen3-30B and
   gpt-oss-20b (`fuse_leaderboards.py --weight 0.5`), no weights fitted. rag25-gen:
   0.812 Kendall and **0.695 tau AP-b**, rank 33 of 113, against 0.801 and 0.628 for
