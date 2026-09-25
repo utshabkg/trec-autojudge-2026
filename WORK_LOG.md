@@ -894,6 +894,14 @@ team can gain from its own runs.
   confirms. rsync replaces a file by rename, which a running bash survives, so
   sync_remote.sh was always safe, and the lesson is to never scp over a script that
   might be running.
+- **Second NuggetRecall code submission registered as `grave-node`**, with retry
+  budget escalation. Rehearsed first on commit 4b963a8 (run 36137025032: 95 tests,
+  clean tree, guard OK, replay reproduced), then submitted from 35cd67b, which differs
+  only in two docs files (run 36137979030). Decided on evidence: with gpt-oss on rag26
+  the fix cut unreadable judgments from 12.4% to 2.7%, the organizers grade with
+  gpt-oss, and `rank-dioptre` predates the fix. **All planned submissions are done**:
+  three code submissions (rank-dioptre, lead-racer, grave-node) and five data systems
+  across the two test sets.
 - **rag26 ensemble uploaded, `ensemble-qwen-gptoss`**, at 07:54 on 2026-09-25, by
   the retrier's fifth try, seven minutes after TIRA's API came back from its HTTP 500
   outage (roughly 07:09 to 07:47). TIRA lists it exactly once, beside our other three

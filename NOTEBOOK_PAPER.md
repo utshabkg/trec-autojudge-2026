@@ -123,7 +123,9 @@ scores come out after TREC.
 
 **Code submissions [done].** Both judges are registered on TIRA, NuggetRecall as
 `rank-dioptre` and Corroborate as `lead-racer`, so the organizers can re-run them,
-NuggetRecall against their own choice of LLM. Getting there took more than the
+NuggetRecall against their own choice of LLM. NuggetRecall is registered a second time
+as `grave-node`, with the reply-budget fix from finding 11, because the organizers grade
+with gpt-oss-20b and without that fix it left 12.4% of rag26 judgments unreadable. Getting there took more than the
 judges did. The rehearsal first gave the container no LLM at all, so the judge fell
 back to an all-zero leaderboard and every TIRA check still passed. Then two
 independent reviews of the real submission path found that it would have failed
