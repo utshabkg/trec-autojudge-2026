@@ -11,9 +11,24 @@ system's sentences for a topic, treats a claim many independent teams make as
 probably important, and corrects for the fact that a system is being scored
 against a bank it helped build.
 
-Everything below that carries a number was measured on the four pilot datasets by
-uploading to TIRA and reading back the correlation against the held-out human
-assessments. Nothing here is estimated.
+Everything below that carries a number was measured on three pilot datasets
+(rag25-gen, ragtime25 and dragun-repgen) by uploading to TIRA and reading back the
+correlation against the held-out human assessments. Nothing here is estimated.
+
+## Where things are
+
+| Path | What it holds |
+|---|---|
+| `judges/nuggetrecall/`, `judges/corroborate/` | the two judges |
+| `scripts/` | running jobs on the compute node, syncing, upload checks, fusion |
+| `tests/` | the test suite, which CI and tira-cli run before every code submission |
+| `data/kiddie/` | the small synthetic dataset used for smoke tests |
+| `docs/NOTEBOOK_PAPER.md` | the plain-language paper draft |
+| `docs/WORK_LOG.md` | the full engineering record: every decision and measurement |
+| `docs/updates/` | progress updates |
+| `run_all_datasets.py`, `run_kiddie.sh`, `datasets.yml`, `fetch_datasets.py`, `Dockerfile` | from the starter kit, to run judges and build the image |
+| `results/` | everything the judges produce: outputs, logs, caches. Not in git |
+| `local-data/` | a link to the TREC data. Not in git |
 
 ---
 

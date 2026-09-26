@@ -2,7 +2,7 @@
 #
 # The complement to judges/corroborate, built because Corroborate ranks near the
 # bottom on short RAG answers (rag25-gen) while the strongest public judges there
-# derive nuggets from the question. See WORK_LOG.md section 5.
+# derive nuggets from the question. See docs/WORK_LOG.md section 5.
 judge_class: "judges.nuggetrecall.judge:NuggetRecallJudge"
 
 # ---------------------------------------------------------------- lifecycle
