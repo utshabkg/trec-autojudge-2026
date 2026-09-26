@@ -894,6 +894,23 @@ team can gain from its own runs.
   confirms. rsync replaces a file by rename, which a running bash survives, so
   sync_remote.sh was always safe, and the lesson is to never scp over a script that
   might be running.
+- **The organizers' runs of our code are already scored on the pilots** (read from
+  TIRA on 2026-09-26). They test with a third, much larger model beyond the two they
+  named. `rank-dioptre`, our registered NuggetRecall:
+  - rag25-gen with gpt-oss-120b: **0.839 Kendall, 0.710 tau AP-b, 6th of 115**, our best
+    result anywhere.
+  - dragun-repgen with gpt-oss-120b: **0.804, 4th of 75**. With gpt-oss-20b 0.589, with
+    Qwen2.5-7B-Instruct 0.587.
+  That refutes our reading of NuggetRecall's 0.141 on DRAGUN (Qwen3-30B) as a design
+  failure, since the same design reaches 0.804. Paper notes finding 1 is corrected. The
+  open question is whether our 0.141 came from Qwen3-30B or from the older code of that
+  run, which lacked NR_RANK. On the test sets, TIRA lists rank-dioptre with all three
+  models on both sets and grave-node with Qwen2.5-7B and gpt-oss-20b on rag26 so far.
+  lead-racer is not listed yet, in line with Maik's three-day estimate.
+- **Professor's first update written** as five Discord messages (the 2,000-character
+  cap), drafted twice, merged, checked by two fact-checkers and a reader who knew
+  nothing of the project, then two corrections by hand. Each under 1,900 characters, no
+  sentence over 15 words.
 - **Maik Froebe started our code submissions on TIRA**, rank-dioptre and lead-racer,
   before grave-node existed, so we asked him to run grave-node as our main NuggetRecall.
   Useful facts from him: the LLMs run on vLLM in default configuration, there are no

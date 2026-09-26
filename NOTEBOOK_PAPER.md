@@ -137,12 +137,23 @@ wherever the real run would.
 
 ## 5. Findings worth reporting
 
-1. **Each judge fails exactly where its assumption breaks.** Corroborate assumes that
-   what many teams agree on is what matters. That holds for long reports but not for
-   short answers, where the best systems stand out by stating things others missed.
-   NuggetRecall assumes the request is a question. That fails on DRAGUN, where the
-   request is a whole news article, so the answer key lists facts from the article
-   rather than what a good report should say.
+1. **Corroborate fails where its assumption breaks. NuggetRecall's DRAGUN failure was
+   probably the model, not the design.** Corroborate assumes that what many teams agree
+   on is what matters. That holds for long reports but not for short answers, where the
+   best systems stand out by stating things others missed.
+
+   We first read NuggetRecall's 0.141 on DRAGUN the same way: the request there is a
+   whole news article, so we guessed the answer key lists facts from the article rather
+   than what a good report should say. The organizers' own runs of our registered code
+   (`rank-dioptre`) refute that as the whole story. On DRAGUN it scores **0.804 with
+   gpt-oss-120b (4th of 75)**, and about 0.59 with both gpt-oss-20b and
+   Qwen2.5-7B-Instruct, all far above our 0.141 with Qwen3-30B. So the design works
+   there. What went wrong in our run is open: the model, or the older code that run
+   used, which lacked the rank measure. **[pending]** a re-run of our current code with
+   Qwen3-30B on DRAGUN would separate the two.
+
+   The same organizer runs give our best result anywhere: **0.839 on rag25-gen with
+   gpt-oss-120b, 6th of 115** (tau AP-b 0.710). A much larger judge model helps.
 
 2. **The two judges measure different things.** Their rankings agree only weakly
    (Kendall 0.50 on ragtime25, 0.23 on rag25-gen), so they are complementary rather
