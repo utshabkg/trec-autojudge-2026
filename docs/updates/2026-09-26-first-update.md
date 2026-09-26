@@ -1,17 +1,10 @@
 # TREC 2026 AutoJudge: first update
 
-*Utshab, team iris-mst, 2026-09-26*
+*team iris-mst, 2026-09-26*
 
-Hi Professor! This is my first update on this project, so I will start from the beginning.
+Our first update on this project, so I am start from the scratch.
 
-**In short:** I built two automatic judges and submitted everything by Sept 25. The deadline is Sept 30. On the matching practice sets, my main judge is at or above the median entry.
-
-## What is AutoJudge?
-- Most TREC tracks have teams build a search or RAG system. AutoJudge flips that.
-- Two other TREC 2026 tracks, RAG and RAGTIME, collected answers from many teams' systems.
-- I build a "judge". It reads those answers and ranks the systems, best to worst.
-- Human assessors also judge the answers. That gives an official ranking of the systems.
-- The organizers compare my ranking with theirs. The closer, the better.
+**In short:** I built two automatic judges and submitted everything by Sept 25. The deadline is Oct 14. On the matching practice sets, my main judge is at or above the median entry.
 
 ## The two test sets
 - **rag26** (RAG track): short answers that cite documents. 83 systems from 25 teams, 119 questions.
@@ -123,7 +116,4 @@ Three findings for our TREC notebook paper.
 ## What is next?
 - Official test-set scores come after the TREC conference.
 - I am drafting the notebook paper now. The draft is [docs/NOTEBOOK_PAPER.md](../NOTEBOOK_PAPER.md) in this repo, and the full engineering record is [docs/WORK_LOG.md](../WORK_LOG.md). I can send it as a PDF.
-- Nothing needs a decision from you now. Your feedback on the draft would help a lot.
-
-Happy to walk you through any of it.
-Utshab
+- Your feedback on the draft would help a lot.
