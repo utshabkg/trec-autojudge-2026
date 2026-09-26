@@ -28,14 +28,15 @@ start)
     # HF_HUB_OFFLINE: the weights are already cached, and a serving process should
     # not wander onto the network. --served-model-name is the full id, so it lands
     # verbatim in each run's config.yml and in TIRA's Model column.
+    mkdir -p results/logs
     HF_HUB_OFFLINE=1 setsid nohup "$VLLM" serve "$MODEL" \
         --served-model-name "$MODEL" \
         --host 127.0.0.1 --port "$PORT" \
         --max-model-len 32768 \
         --gpu-memory-utilization 0.90 \
         --max-num-seqs 64 \
-        > vllm.log 2>&1 < /dev/null &
-    echo "vLLM starting, pid $!, model $MODEL, log vllm.log"
+        > results/logs/vllm.log 2>&1 < /dev/null &
+    echo "vLLM starting, pid $!, model $MODEL, log results/logs/vllm.log"
     ;;
 wait)
     for i in $(seq 1 180); do
@@ -43,11 +44,11 @@ wait)
             echo "ready after ~$((i * 5))s"; exit 0
         fi
         if ! pgrep -f "vllm serve" >/dev/null; then
-            echo "vLLM exited, last log lines:"; tail -20 vllm.log; exit 1
+            echo "vLLM exited, last log lines:"; tail -20 results/logs/vllm.log; exit 1
         fi
         sleep 5
     done
-    echo "timed out waiting for vLLM"; tail -20 vllm.log; exit 1
+    echo "timed out waiting for vLLM"; tail -20 results/logs/vllm.log; exit 1
     ;;
 env)
     # Ask the running server which model it serves, rather than trusting $MODEL.

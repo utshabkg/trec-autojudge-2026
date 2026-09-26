@@ -9,7 +9,7 @@
 #
 set -euo pipefail
 
-OUTDIR="./output-kiddie"
+OUTDIR="./results/output-kiddie"
 TOPICS="data/kiddie/topics/kiddie-topics.jsonl"
 RESPONSES="data/kiddie/runs/repgen/"
 TRUTH="data/kiddie/eval/kiddie_fake.eval.ir_measures.txt"

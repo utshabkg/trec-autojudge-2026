@@ -21,7 +21,9 @@
 #
 # `launch` starts a detached job and returns immediately: setsid gives it its own
 # session and every file descriptor is redirected, so a dropped connection cannot
-# take it down and ssh has nothing to wait on. Progress goes to node-run.log, one
+# take it down and ssh has nothing to wait on. Everything a run produces goes under
+# results/: outputs in results/output (or --out), logs in results/logs, caches in
+# results/cache. Progress goes to results/logs/node-run-<judge>.log, one
 # log per dataset, and a line per dataset with its exit code and wall time.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -51,7 +53,7 @@ judge_procs() {
 case "${1:-}" in
 launch)
     shift
-    VARIANT="best"; JUDGE="corroborate"; OUT="output"
+    VARIANT="best"; JUDGE="corroborate"; OUT="results/output"
     while [ "${1:-}" = "--variant" ] || [ "${1:-}" = "--judge" ] || [ "${1:-}" = "--out" ]; do
         case "$1" in
             --variant) VARIANT="$2" ;;
@@ -77,7 +79,8 @@ launch)
         echo "stop it first: bash scripts/run_on_node.sh stop" >&2
         exit 1
     fi
-    setsid nohup bash "$0" _run "$JUDGE" "$VARIANT" "$OUT" "$@" > "node-run-$JUDGE.log" 2>&1 < /dev/null &
+    mkdir -p results/logs
+    setsid nohup bash "$0" _run "$JUDGE" "$VARIANT" "$OUT" "$@" > "results/logs/node-run-$JUDGE.log" 2>&1 < /dev/null &
     echo "launched pid $! judge=$JUDGE variant=$VARIANT out=$OUT datasets: $*"
     ;;
 stop)
@@ -102,7 +105,7 @@ _run)
     export HF_HOME="${HF_HOME:-/media/20TB/shared-cache/huggingface}"
     # One cache directory per judge, so an LLM judge's prompt cache and Corroborate's
     # score cache never share a file.
-    export CACHE_DIR="${CACHE_DIR:-./cache/$JUDGE}"
+    export CACHE_DIR="${CACHE_DIR:-./results/cache/$JUDGE}"
     if grep -qE "^uses_llm:[[:space:]]*true" "judges/$JUDGE/workflow.yml"; then
         eval "$(bash scripts/serve_llm.sh env)"
         # minima-llm allows 32 requests in flight by default, and vLLM here is
@@ -119,7 +122,7 @@ _run)
         echo "=== $ds judge=$JUDGE variant=$VARIANT model=$OPENAI_MODEL start $(date -Is) ==="
         python run_all_datasets.py --workflow "judges/$JUDGE/workflow.yml" \
             --variant "$VARIANT" --dataset "$ds" --out-dir "$OUT" --keep-going \
-            > "run-$JUDGE-$ds-$VARIANT-$(basename "$OUT").log" 2>&1
+            > "results/logs/run-$JUDGE-$ds-$VARIANT-$(basename "$OUT").log" 2>&1
         echo "=== $ds exit $? after $((SECONDS - S))s ==="
     done
     echo "=== ALL DONE $(date -Is) ==="
@@ -129,8 +132,8 @@ procs)
     judge_procs
     ;;
 status)
-    for f in node-run*.log; do [ -e "$f" ] && { echo "--- $f"; cat "$f"; }; done
-    for f in run-*.log; do
+    for f in results/logs/node-run*.log; do [ -e "$f" ] && { echo "--- $f"; cat "$f"; }; done
+    for f in results/logs/run-*.log; do
         [ -e "$f" ] || continue
         last=$(tr '\r' '\n' < "$f" | grep -E "(Pooling|Judging) topics:" | tail -1)
         echo "  $f: ${last:-(starting)}"

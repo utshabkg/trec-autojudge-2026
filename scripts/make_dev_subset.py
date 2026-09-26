@@ -91,7 +91,7 @@ def main() -> int:
     print(f"\nauto-judge run --workflow judges/corroborate/workflow.yml --variant best \\")
     print(f"    --rag-responses {out_runs}/ \\")
     print(f"    --rag-topics {out_topics / args.topics.name} \\")
-    print(f"    --out-dir ./output-dev/")
+    print(f"    --out-dir ./results/output-dev/")
     return 0
 
 

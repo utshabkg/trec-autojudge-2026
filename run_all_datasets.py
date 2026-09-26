@@ -284,7 +284,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run judge workflow against multiple datasets")
     parser.add_argument("--workflow", "-w", required=True, help="Path to workflow.yml")
     parser.add_argument("--datasets", "-d", default="datasets.yml", help="Path to datasets.yml config (default: datasets.yml)")
-    parser.add_argument("--out-dir", "-o", default="./output", help="Base output directory")
+    parser.add_argument("--out-dir", "-o", default="./results/output", help="Base output directory")
     parser.add_argument("--variant", "-v", default=None, help="Workflow variant to run (optional; omit to use the workflow's default)")
     parser.add_argument("--meta-evaluate", action="store_true", help="After each run, invoke auto-judge-evaluate meta-evaluate against the dataset's 'truth' file (if set in datasets.yml)")
     parser.add_argument("--upload-tira", action="store_true", help="After each run, upload the output to TIRA via `tira-cli upload` (needs the dataset's 'tira_id')")

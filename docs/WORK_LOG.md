@@ -827,6 +827,30 @@ team can gain from its own runs.
 
 ## 8. Progress log
 
+**Layout note.** On 2026-09-26 everything generated moved under `results/`: run outputs
+(`results/output`, `results/output-gptoss` and so on), submission files
+(`results/ensemble`, `results/upload-rank`, `results/fusion`, `results/attic`), caches
+(`results/cache`) and logs (`results/logs`). The docs moved to `docs/`. Entries below
+dated earlier name paths as they were then, so read them with `results/` in front.
+
+### 2026-09-26
+
+- **Cleaned the repository layout**, on both machines. About 50 generated items sat at
+  the root: 13 output folders, 28 logs, four submission folders and the caches. All of
+  it now lives in one gitignored `results/` folder (logs in `results/logs`, caches in
+  `results/cache`), and the docs live in `docs/`. The root holds only tracked files
+  plus `results/`, `docs/` and the data link. The scripts write into the new places:
+  run_on_node.sh (outputs, logs, CACHE_DIR), serve_llm.sh (vllm.log),
+  run_all_datasets.py and run_kiddie.sh (default output folders), sync_remote.sh (push
+  never copies results, pull fetches results without the 6.5 GB cache, pull-cache
+  fetches the cache). The two one-off upload scripts moved to `scripts/oneoff/` with a
+  note. Proven by the full suite (93 passed) and by a smoke run through the launcher,
+  which wrote its output, log and cache under `results/` and left the root unchanged.
+- **One gap the move exposed in push:** it deletes only inside tracked folders, so a
+  file moved off the root (the two docs) lingered on the node until removed by hand.
+  Worth knowing before moving any other root file.
+- **Wrote the professor's first update**, `docs/updates/2026-09-26-first-update.md`.
+
 ### 2026-09-23 and 24
 
 - **The specificity-gate fix changed nothing measurable, which refutes our guess.**
@@ -1259,12 +1283,12 @@ bash run_kiddie.sh        # framework smoke test
 pytest                    # 39 tests, no GPU or network needed
 
 # the judge, on the synthetic set
-export CACHE_DIR=./cache/kiddie
+export CACHE_DIR=./results/cache/kiddie
 auto-judge run --workflow judges/corroborate/workflow.yml --variant best \
     --rag-responses data/kiddie/runs/repgen/ \
     --rag-topics data/kiddie/topics/kiddie-topics.jsonl \
-    --out-dir ./output-kiddie/
-python scripts/check_upload_dir.py output-kiddie --expect-runs 4 --expect-topics 5
+    --out-dir ./results/output-kiddie/
+python scripts/check_upload_dir.py results/output-kiddie --expect-runs 4 --expect-topics 5
 ```
 
 Once the data is available:
@@ -1278,7 +1302,7 @@ python scripts/probe_schema.py local-data/rag26/runs/generation      # attributi
 python run_all_datasets.py --workflow judges/corroborate/workflow.yml \
     --variant best --dataset ragtime25 --meta-evaluate
 python scripts/validate_pilots.py --truth local-data/ragtime25/eval/*.official.eval.jsonl \
-    --eval output/ragtime25/corroborate/best-all-all/best.eval.txt \
+    --eval results/output/ragtime25/corroborate/best-all-all/best.eval.txt \
     --runs local-data/ragtime25/runs/repgen/ --label ragtime25
 ```
 

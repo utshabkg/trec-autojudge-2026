@@ -23,7 +23,7 @@ auto-judge run \
     --workflow judges/naive/workflow.yml \
     --rag-responses data/kiddie/runs/repgen/ \
     --rag-topics data/kiddie/topics/kiddie-topics.jsonl \
-    --out-dir output-naive/
+    --out-dir results/output-naive/
 ```
 
 Evaluate the produced leaderboard:
@@ -35,7 +35,7 @@ auto-judge-evaluate meta-evaluate \
     --truth-header \
     --eval-format ir_measures \
     --on-missing default \
-    output-naive/naive.eval.txt
+    results/output-naive/naive.eval.txt
 ```
 
 Example output:

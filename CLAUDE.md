@@ -26,7 +26,7 @@ uv pip install -e '.[all]'
 auto-judge run --workflow judges/MYJUDGE/workflow.yml \
     --rag-responses data/kiddie/runs/repgen/ \
     --rag-topics data/kiddie/topics/kiddie-topics.jsonl \
-    --out-dir ./output-kiddie/
+    --out-dir ./results/output-kiddie/
 
 # Smoke test (example judge + meta-eval)
 bash run_kiddie.sh
@@ -36,7 +36,7 @@ auto-judge-evaluate meta-evaluate \
     --truth-leaderboard data/kiddie/eval/kiddie_fake.eval.ir_measures.txt \
     --truth-format ir_measures --truth-header \
     --eval-format ir_measures --on-missing default \
-    output-kiddie/*.eval.txt
+    results/output-kiddie/*.eval.txt
 ```
 
 ## Conventions

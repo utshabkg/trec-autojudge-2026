@@ -22,11 +22,14 @@ HERE="$(cd "$(dirname "$0")/.." && pwd)"
 # Code only. Data, caches and outputs are handled separately and deliberately,
 # so a code push can never overwrite results produced on the node.
 CODE_EXCLUDES=(
-    --exclude local-data --exclude local-data-dev
+    --exclude local-data --exclude local-data-dev --exclude results/
     --exclude 'output*/' --exclude cache/ --exclude .hf/
     --exclude metaeval/ --exclude models/ --exclude fusion/
     --exclude __pycache__/ --exclude '*.egg-info/' --exclude .pytest_cache/
     --exclude '*.log'
+    # Claude Code's own machine-local files: permission grants and a runtime lock.
+    --exclude .claude/settings.json --exclude .claude/settings.local.json
+    --exclude .claude/scheduled_tasks.lock
 )
 
 # Why push no longer runs --delete over the whole tree.
@@ -87,16 +90,16 @@ pull)
         esac
         [[ "$tracked" == *" $d "* ]] && continue
         echo "   $d"
-        rsync -az "$HOST:$REMOTE/$d/" "$HERE/$d/"
+        # Caches live in results/cache since the 2026-09-26 cleanup. They are large
+        # (6.5 GB), so a plain pull skips them and pull-cache fetches them.
+        rsync -az --exclude 'cache/' "$HOST:$REMOTE/$d/" "$HERE/$d/"
     done
-    # Log files written by runs on the node.
-    rsync -az --include='*.log' --exclude='*' "$HOST:$REMOTE/" "$HERE/" 2>/dev/null || true
     echo ">> done. Code changes made on the node are NOT pulled: make them here."
     ;;
 pull-cache)
     "$0" pull
-    echo ">> caches <- $HOST:$REMOTE/cache"
-    rsync -az --info=progress2 "$HOST:$REMOTE/cache/" "$HERE/cache/"
+    echo ">> caches <- $HOST:$REMOTE/results/cache"
+    rsync -az --info=progress2 "$HOST:$REMOTE/results/cache/" "$HERE/results/cache/"
     ;;
 status)
     echo ">> code that differs (dry run, nothing changes)"

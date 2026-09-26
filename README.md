@@ -256,7 +256,7 @@ auto-judge run \
     --variant best \
     --rag-responses local-data/rag26/runs/generation/ \
     --rag-topics   local-data/rag26/topics/topics.jsonl \
-    --out-dir      ./output/rag26/
+    --out-dir      ./results/output/rag26/
 ```
 
 Both judges run with `create_qrels: false`. This is deliberate and load bearing: a

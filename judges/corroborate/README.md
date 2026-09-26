@@ -32,12 +32,12 @@ Three decisions in the code that look arbitrary and are not:
 ## Running it
 
 ```bash
-export CACHE_DIR=./cache/rag26        # embedding and cross-encoder score cache
+export CACHE_DIR=./results/cache/rag26        # embedding and cross-encoder score cache
 auto-judge run \
     --workflow judges/corroborate/workflow.yml --variant best \
     --rag-responses local-data/rag26/runs/generation/ \
     --rag-topics    local-data/rag26/topics/topics.jsonl \
-    --out-dir       ./output/rag26/
+    --out-dir       ./results/output/rag26/
 ```
 
 `CACHE_DIR` is worth setting even though the judge makes no LLM calls. It is
