@@ -1,0 +1,49 @@
+\section{Introduction}
+
+Human assessment is the slowest and most expensive part of a TREC track. Large
+language models (LLMs) can grade answers for a fraction of the cost, and several
+studies find that system rankings built from their grades often agree with rankings
+built from human
+grades~\cite{faggioli2023perspectives,thomas2024predict,upadhyay2024umbrela,pradeep2025greatnugget}.
+Where such grades can stand in for human assessment, and where they break, is
+still open. TREC 2026 AutoJudge turns that question into a shared
+task~\cite{autojudge2026}. A participant builds a judge. The judge reads the
+anonymized runs of a host track and ranks the systems that produced them. It is
+scored by how closely its ranking matches the ranking that human assessors
+produce.
+
+We built two judges that start from opposite assumptions. \judge{NuggetRecall}
+assumes that the request alone says what a good answer must contain. An LLM writes
+an answer key of facts before it sees any response, in the tradition of nugget
+evaluation~\cite{voorhees2003qa,lin2006methods,pradeep2024initial}, and then
+checks each response against that key. \judge{Corroborate} uses no LLM. It
+assumes that a claim many independent teams make is probably one that matters. It
+pools the sentences of all responses to a topic, counts how many distinct teams
+state each claim, and scores a response by the claims it shares with other teams.
+The idea comes from pooling in retrieval evaluation, where the merged output of
+many systems decides which documents get judged~\cite{zobel1998reliable}, and from
+work that ranks systems from that pool without any human
+judgments~\cite{soboroff2001ranking}.
+
+This paper makes four contributions.
+\begin{itemize}
+  \item Two complete judges, each submitted as data and as code.
+    \judge{Corroborate} never lets a team vote for its own claims. A claim needs
+    two teams to enter the bank, and it is weighted by the number of teams other
+    than the scored one that state it. This is a team-level version of the
+    leave-one-run-out test of pool bias of~\citet{zobel1998reliable}.
+  \item Evidence from the pilots that the two judges do best on different human
+    measures. On long reports \judge{NuggetRecall} is our stronger judge on nugget
+    coverage and \judge{Corroborate} on F1. On short answers \judge{Corroborate}
+    trails on both truth measures.
+  \item Measurements of what matters inside an LLM judge. The judge model mattered
+    most. Ranking runs within each topic before averaging gave a small gain on
+    short answers and a small loss on long reports.
+  \item Six ways our judges failed, or would have failed, during development
+    without raising an error. Several produced a leaderboard that looked plausible.
+    We describe the checks that caught them.
+\end{itemize}
+
+Every pilot score in this paper comes from the organizers' evaluation on TIRA,
+and every comparison with other entries is informal. Test-set results will be
+added once the organizers release them.

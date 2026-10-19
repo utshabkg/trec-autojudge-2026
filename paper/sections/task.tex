@@ -1,0 +1,94 @@
+\section{Task, Data and Evaluation}
+\label{sec:task}
+
+\subsection{The task}
+
+Each AutoJudge dataset holds the topics of a host track and the anonymized runs
+submitted to it. A run contains one response per topic. A response is a list of
+sentences, each with optional citations to documents, plus metadata that names the
+run and an anonymized team. A judge reads all of this and writes a leaderboard:
+one score per run, topic and measure, plus an aggregate row per run. A judge may
+emit several measures.
+
+A complete submission has two parts. The \emph{data submission} consists of the
+leaderboards the judge produces on the test sets. The \emph{code submission} is
+the judge itself, packaged as a container on TIRA~\cite{froebe2023tira}, so that
+the organizers can run it again with an LLM of their choice. An LLM judge must
+also reproduce its own leaderboard with the LLM endpoint switched off, by replaying
+every call from its prompt cache.
+
+\subsection{Data}
+
+Table~\ref{tab:data} lists the datasets. The two test sets come from the TREC 2026
+RAG track, whose responses are short cited answers, and the TREC 2026 RAGTIME
+track, whose responses are long cited reports. Teams often submit several close
+variants of one pipeline, so the table gives teams as well as runs. Both test
+releases carry the text of cited documents inline, for 99.1\% and 99.7\% of
+responses, and both are in English.
+
+The three pilot datasets come from TREC 2025 and have human assessments, but no
+release ships them. The truth stays on the TIRA server. The only way to measure a
+judge is to run it on a pilot, upload the leaderboard and read back the correlation
+the organizers compute. Every pilot number in this paper was obtained that way.
+rag25-gen is the pilot closest to rag26, and ragtime25 the one closest to
+ragtime26. In dragun-repgen the request is not a question but a whole news article,
+about 11\,KB of text per topic, and the report is meant to help a reader assess it.
+
+\begin{table}
+  \caption{Datasets. The test sets have no released truth. The pilots have human
+  truth, held on TIRA.}
+  \label{tab:data}
+  \small
+  \setlength{\tabcolsep}{3pt}
+  \begin{tabular}{@{}llrrrr@{}}
+    \toprule
+    Dataset & Kind & Runs & Teams & Topics & Responses\\
+    \midrule
+    rag26 (test)          & short answers & 83 & 25 & 119 & 9,877\\
+    ragtime26 (test)      & long reports  & 49 & 10 & 103 & 5,047\\
+    \midrule
+    rag25-gen (pilot)     & short answers & 51 & 18 & 105 & 5,332\\
+    ragtime25 (pilot)     & long reports  & 59 & 13 & 122 & 7,198\\
+    dragun-repgen (pilot) & news reports  & 28 & 9  & 30  & 840\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{How judges are scored}
+\label{sec:scoring}
+
+TIRA correlates each measure a judge emits with each human truth measure, over the
+systems' aggregate scores. It uses Kendall's $\tau$~\cite{kendall1938new} and
+\tauap, the tie-aware form~\cite{urbano2017ties} of the AP rank
+correlation~\cite{yilmaz2008new}, which weights agreement at the top of the ranking
+more heavily. For each truth measure it reports the maximum over the judge's
+measures.
+
+On 2026-10-09 the organizers re-scored every entry on rag25-gen and ragtime25
+against a revised set of truth measures. rag25-gen now has two, Strict Vital Score
+and Sub Coverage. ragtime25 has Nugget Coverage Macro and F1 Macro, plus Citation
+Support, which currently reads 0.000 for every entry and which we leave out.
+dragun-repgen still reports one maximum over all its truth measures. The organizers
+have not described the revised measures in detail, so where we read meaning into
+them below, we go by their names. We made our design choices under the earlier
+scoring, which reported one maximum over all truth measures on every pilot. This
+paper reports the current numbers and says where the two disagree.
+
+Three properties of the scoring shaped both judges. First, since a maximum is
+taken, emitting several well-motivated measures costs nothing, so each judge emits
+four or five. The same rule flatters a system with many measures, because the best
+one is picked after the fact. Our single-measure rows in Table~\ref{tab:pilots},
+``rank only'' and the ensemble, do not get that help. Second, the earlier scoring
+also reported the minimum over all pairs of measures. We therefore oriented every
+measure so that higher is better. Third, in the organizers' evaluator, ties in a
+judge's scores are broken by input order, so a coarse score loses agreement at
+random. All our measures are continuous for that reason.
+
+\subsection{Data policy}
+
+The track restricts what developers may look at, because the test responses are
+the test set. On the test sets we read response content only for the first ten
+topics of each topics file. We never tuned a parameter against a score on a test
+topic and made no attempt to identify the team behind any run. One engineering
+change followed a failure count on the test data. Sections~\ref{sec:setup}
+and~\ref{sec:disclosure} describe it.

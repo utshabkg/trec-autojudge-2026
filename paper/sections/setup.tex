@@ -1,0 +1,62 @@
+\section{Experimental Setup}
+\label{sec:setup}
+
+\paragraph{LLMs.} Our data submissions use two judge models.
+Qwen3-30B-A3B-Instruct-2507 in FP8 is a mixture-of-experts model from the Qwen3
+family~\cite{yang2025qwen3} with about 3B active parameters. The 2507 Instruct
+release has no thinking mode, so it writes no reasoning block.
+gpt-oss-20b~\cite{openai2025gptoss} is a reasoning model. We also ran
+Qwen2.5-7B-Instruct~\cite{qwen2025qwen25} on one pilot, because the organizers
+named it as one of the models they would use. We served all three with vLLM
+0.13.0~\cite{kwon2023vllm} on one NVIDIA RTX 6000 Ada GPU with 48\,GB of memory, a
+context of 32,768 tokens and up to 64 concurrent sequences. With Qwen3-30B a full
+run took 30 minutes on rag26 and 14 minutes on ragtime26. gpt-oss-20b is slower. It
+took 99 minutes on ragtime25, at about 40 seconds per call.
+
+\paragraph{Reply budgets.} Our Qwen3-30B and Qwen2.5-7B runs, on the pilots and in
+the submitted \run{nuggetrecall-best}, used reply budgets of 1,536 tokens for the
+key and 1,024 for judging. We raised both to 4,096 later, for reasoning models.
+Neither Qwen model reasons before it answers, and vLLM recorded no Qwen3-30B reply
+that reached the old limit. Our gpt-oss-20b runs used 4,096 tokens on every
+attempt, except the rag26 run, which had the growing budget of
+Section~\ref{sec:budget}.
+
+\paragraph{Runs by the organizers.} The organizers ran our code submissions on TIRA
+with models of their choice. On the pilots they ran \run{rank-dioptre}, which keeps
+4,096 tokens on every attempt, with gpt-oss-120b on rag25-gen and with
+Qwen2.5-7B-Instruct, gpt-oss-20b and gpt-oss-120b on dragun-repgen. They ran
+\run{lead-racer}, our \judge{Corroborate} submission, on all three pilots, on CPU.
+On the test sets they ran \run{rank-dioptre} and \run{grave-node} with those three
+models, \run{grave-node} also with a fourth model listed on TIRA as
+Qwen3.8-27B-FP8, and \run{lead-racer}. Tables mark organizer runs with \org.
+
+\paragraph{Encoders.} \judge{Corroborate} uses bge-base-en-v1.5 and
+nli-deberta-v3-base. It runs them on a GPU when one has at least 6\,GB free, and
+otherwise on CPU with eight threads.
+
+\paragraph{Validation.} We fitted nothing on the test sets, and every choice we
+made by score came from the pilots. Three \judge{Corroborate} constants came from
+elsewhere: $\tau$ and the band edge from the synthetic dataset
+(Section~\ref{sec:corroborate}), and the specificity floor from the encoder's
+range (Section~\ref{sec:floor}). One engineering change followed an observation on
+test data. On the first pass, 27\% of the rag26 judgments by gpt-oss-20b came back
+unreadable, so we added the growing reply budget of Section~\ref{sec:budget} and
+asked the organizers to treat the code submission that carries it as our main one.
+We saw only that count and vLLM's count of replies stopped at the length limit,
+never a response, a grade or any truth.
+
+\judge{NuggetRecall} is not deterministic from run to run
+(Section~\ref{sec:noise}). \judge{Corroborate} is, on the same hardware. One re-run
+of \judge{NuggetRecall} moved Kendall by 0.010 to 0.019, so we treat Kendall
+differences below 0.02 as noise. The same re-run moved \tauap\ by less than 0.01,
+but one re-run says little about a measure that leans on a few top systems, so
+\tauap\ differences are less certain than Kendall ones.
+
+\paragraph{Code submission.} Our machines have no container runtime, so we build and
+submit the containers from GitHub Actions. Before each submission the workflow runs
+the test suite. It then runs the judge once against a stub LLM endpoint to fill a
+cache, and runs the container with the endpoint switched off. The workflow fails
+unless the container's own leaderboard is reproduced from that cache and actually
+ranks systems apart. The starter base image ships Python 3.11.0rc1, a release
+candidate on which a current transformers and PyTorch stack fails at import, so
+our image installs its own Python 3.12.

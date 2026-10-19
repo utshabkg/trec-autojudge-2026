@@ -1,0 +1,106 @@
+\section{Corroborate}
+\label{sec:corroborate}
+
+\judge{Corroborate} builds its reference from the one resource every dataset has,
+the responses themselves. It needs no LLM, no document collection and no network
+access.
+
+\subsection{Pooling sentences into claims}
+
+For each topic we take every sentence of every response, normalize it, and drop
+fixed boilerplate and sentences shorter than five words. Each sentence is embedded
+with bge-base-en-v1.5~\cite{xiao2023cpack}. Sentences are then clustered greedily,
+in a fixed order by run id and sentence position. A sentence joins the cluster
+whose first sentence, the leader, is most similar to it, provided the cosine
+similarity is at least $\tau=0.80$. Otherwise it starts a new cluster. The fixed
+order makes the result independent of file order. Each cluster records the set of
+teams $T(c)$ whose responses contributed to it.
+
+Clustering also does the matching. A response covers a cluster when one of its own
+sentences landed there, so no separate retrieval step is needed.
+
+We set $\tau$ and the band edge of 0.62 used below from similarities on the starter
+kit's small synthetic dataset, where a true paraphrase scored about 0.83 and an
+unrelated sentence on the same topic about 0.61. We did not sweep them on the
+pilots.
+
+\subsection{The claim bank}
+
+A cluster enters the topic's bank only if at least two teams contributed to it and
+it is specific to the topic. Specificity is the cosine similarity between the
+cluster's leader and the topic text, and the floor is 0.50. The bank keeps at most
+the 40 clusters with the most teams. Votes are counted per team, never per run.
+Otherwise a team that submits five variants of one pipeline would vote five times
+for its own phrasing. The cap of 40 and the five-word minimum were set by hand and
+not tuned.
+
+\subsection{Leave-one-team-out weighting}
+
+A response's own sentences are part of the pool its bank is built from. Two rules
+keep a team from voting for its own claims. First, a cluster needs at least two
+teams to enter the bank, so a claim that only one team makes is never scored.
+Second, when we score a response from team $t$, each cluster gets the weight
+\begin{equation}
+  w_t(c) = |T(c) \setminus \{t\}|,
+\end{equation}
+the number of other teams that state it. Without this weight, a team's own
+sentences would add to the weight of the claims it is scored on. Since every bank
+cluster has at least two teams, the weight is never below one.
+
+This is a team-level version of the leave-one-run-out test of pool bias
+of~\citet{zobel1998reliable}, which removes from the pool whatever one run alone
+contributed. Zobel used that test to measure the bias, and we use the same idea to
+correct for it. We did not measure how much the weight changes the ranking.
+
+\subsection{Measures}
+
+Coverage is soft. For a bank cluster $c$, response $r$ gets
+$\mathrm{cov}_r(c)=1$ if one of its sentences was assigned to $c$, or if its most
+similar sentence reaches $\tau$. If the best similarity falls in $[0.62, \tau)$, a
+cross-encoder decides, and its entailment probability is the credit. The
+cross-encoder is nli-deberta-v3-base, a DeBERTaV3 model~\cite{he2023debertav3}
+fine-tuned for natural language inference. Below 0.62 the credit is 0. Then
+\begin{equation}
+  \texttt{NCOV}(r) = \frac{\sum_{c} w_t(c)\,\mathrm{cov}_r(c)}{\sum_{c} w_t(c)}.
+\end{equation}
+
+\texttt{NPREC} is the share of the response's own sentences that sit in a
+topic-specific cluster that at least one other team also states. It is normalized
+by length, so padding and claims nobody else makes pull it down. \texttt{NF1} is
+the harmonic mean of \texttt{NCOV} and \texttt{NPREC}, and \texttt{NF1\_RANK} is
+the within-topic percentile of \texttt{NF1}, as in Equation~\ref{eq:percentile}.
+
+\texttt{CITE} measures citation support. For each cited sentence we check the
+first three of its cited documents. Each document is split into chunks of at most 1,200
+characters, and only its first six are used. For each document we take the chunk
+closest to the sentence by embedding similarity, and the cross-encoder's entailment
+probability given that chunk is the document's support. A sentence's support is the
+highest over its documents, and \texttt{CITE} averages it over the cited sentences
+that have at least one document present. The path is chosen per dataset. When fewer
+than half the responses carry document text, \texttt{CITE} is instead the mean share
+of other teams citing the same documents, times the share of sentences that cite
+anything. Both test sets carry the text, so there \texttt{CITE} uses entailment.
+
+\subsection{Why a pooled bank is not circular}
+
+Two arguments support the design. First, the human reference is itself built from
+a pool. In TREC RAG, nugget banks are drafted from the documents that systems
+retrieved, which are pooled, and are then vetted by
+assessors~\cite{pradeep2024initial}. That pool holds documents rather than answers,
+so the analogy is loose, but in both cases the reference comes from what the
+systems produced. Second, a fact that no system states cannot enter the bank, but
+it would give every system the same zero anyway, so it cannot change their order.
+
+The real risk is that consensus pulls every system toward the median. That would
+hurt most at the top of the ranking, where \tauap\ weighs errors most.
+Section~\ref{sec:analysis} suggests this is what happens on short answers, though
+we have not tested it directly.
+
+\subsection{Cost}
+
+The first version issued one matrix-vector product per sentence and spent nearly
+all its time starting and joining thread pools. Clustering in blocks of 512
+sentences gives output identical to the sequential version, which a test checks,
+and cut pooling from 13.0 to 1.04 seconds per topic. On one GPU a full run takes 73
+minutes on rag26 and 22 minutes on ragtime26. On CPU alone a pilot took about eight
+hours.

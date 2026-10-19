@@ -1,0 +1,133 @@
+\section{NuggetRecall}
+\label{sec:nuggetrecall}
+
+\judge{NuggetRecall} makes two kinds of LLM call: one per topic to write an answer
+key, and one per response to check that response against the whole key. The number
+of calls therefore grows with topics plus responses, not with responses times
+facts. All of rag26 takes 9,838 judging calls, and its 39 responses with no text
+score zero without a call.
+
+\subsection{An answer key from the request alone}
+
+For each topic the LLM receives the request, meaning its title, problem statement
+and background in a fixed order. It is asked for 8 to 20 self-contained facts that a
+complete, high-quality response should contain, most important first. Each fact is
+tagged VITAL if a response that leaves it out is clearly incomplete, or OKAY if it
+is useful supporting detail. Figure~\ref{fig:key} shows part of one key, and
+Appendix~\ref{app:prompts} gives both prompts in full.
+
+The model never sees a response at this step. The framework enforces that: our
+workflow declares that the key does not depend on responses, so none are passed
+in. This has three effects. A verbose system cannot shape the key. The key can hold
+a fact that every system missed, which a key mined from the responses cannot. And
+because the key comes from the topic alone, the data policy lets us read it for any
+topic.
+
+The parser accepts numbered lines with a VITAL or OKAY tag, drops duplicates, and
+stops at 20 facts, so a model that ignores the requested range cannot inflate the
+denominator. A reply with fewer than two usable facts is retried with a fixed
+suffix appended to the prompt. If every attempt fails, the topic falls back to a
+one-fact key made from its title. That never happened with Qwen3-30B, on any pilot
+or test set. With gpt-oss-20b it happened on 5 of 122 ragtime25 topics and on 3 of
+103 ragtime26 topics.
+
+\begin{figure}
+  \small
+  \fbox{\parbox{0.94\columnwidth}{%
+    \textbf{Request} (rag25-gen, topic 464, shortened). I want a thorough
+    understanding of what makes up a community, including its definitions in
+    various contexts like science [\ldots] I'm also interested in related terms
+    like grassroots organizations, how communities set boundaries and
+    priorities, and their roles in important areas such as preparedness and
+    nation-building.
+
+    \smallskip
+    \textbf{Answer key} (5 of 20 facts).\\[2pt]
+    \textsc{vital}\quad In ecology, a community refers to all the interacting
+    populations of different species living in a particular area and sharing
+    resources.\\[2pt]
+    \textsc{vital}\quad Grassroots organizations are community-driven groups
+    formed by local individuals to address specific social, environmental, or
+    political issues from the bottom up [\ldots]\\[2pt]
+    \textsc{vital}\quad Communities establish boundaries through shared identity,
+    cultural norms, geographic limits, or formal rules, which help define
+    membership and exclusion.\\[2pt]
+    \textsc{okay}\quad Community boundaries can be fluid and change over time due
+    to migration, cultural shifts, or political reorganization.\\[2pt]
+    \textsc{okay}\quad Preparedness efforts in communities often involve
+    collaboration with government agencies, NGOs, and emergency services.}}
+  \caption{Part of an answer key that Qwen3-30B wrote from the request alone. The
+  full key has 8 VITAL and 12 OKAY facts. We show the first topic of the rag25-gen
+  topics file, not a hand-picked one.}
+  \label{fig:key}
+\end{figure}
+
+\subsection{Checking each response in one call}
+
+Each response is judged against the whole key in a single call. The prompt holds
+the request, the response and the numbered facts. The response is shown as its
+sentences joined with spaces, capped at 40,000 characters, a cap no pilot response
+reached. Citations and cited documents are not shown, so \judge{NuggetRecall} does
+not judge attribution. The prompt asks for one label per fact: \emph{support} if the
+response clearly states it, \emph{partial} if the response states part of it or
+hedges it, and \emph{no} otherwise. The model is told to judge meaning rather than
+wording and to use no outside knowledge. Temperature is 0.
+
+A reply must label at least 80\% of the facts, rounded down to a whole number, or it
+is rejected. We do not accept a shorter reply and fill its gaps with \emph{no},
+since that would invent misses and quietly understate the system. In an accepted
+reply, the few facts left unlabeled count as \emph{no}. A rejected reply is retried
+up to twice with a fixed suffix, which changes the prompt and hence the cache key
+while keeping replay deterministic. A response still unreadable after three
+attempts scores zero, and the count is logged. Reasoning models may write a visible
+reasoning block before the labels. The parser strips it.
+
+\subsection{Measures}
+
+Let $K_q$ be the facts in the key for topic $q$, $V_q \subseteq K_q$ the vital
+ones, and $\ell_{r,k}$ the label that response $r$ received for fact $k$. Lenient
+credit is $c(\text{support})=1$, $c(\text{partial})=0.5$ and $c(\text{no})=0$.
+Strict credit $c'$ gives 1 to support only. Then
+\begin{align}
+  \texttt{NR\_VITAL}(r,q) &= \frac{1}{|V_q|}\sum_{k\in V_q} c(\ell_{r,k}),\\
+  \texttt{NR\_WEIGHTED}(r,q) &= \frac{\sum_{k\in K_q} w_k\, c(\ell_{r,k})}{\sum_{k\in K_q} w_k},
+\end{align}
+with $w_k=1$ for vital facts and $0.5$ for okay ones. \texttt{NR\_ALL} is
+\texttt{NR\_VITAL} taken over all of $K_q$, and \texttt{NR\_VITAL\_STRICT} is
+\texttt{NR\_VITAL} with $c'$. If a key has no vital fact, vital recall falls back to
+recall over all facts. A system's score is the mean over topics, and a missing
+response counts as zero.
+
+The fifth measure, \texttt{NR\_RANK}, uses the same judgments but aggregates them
+differently. On each topic, every run gets the share of the other runs it beats on
+\texttt{NR\_VITAL}, with ties split evenly:
+\begin{equation}
+  \label{eq:percentile}
+  p_q(r) = \frac{|\{r' : s_q(r') < s_q(r)\}| + \tfrac{1}{2}\,|\{r'\neq r : s_q(r') = s_q(r)\}|}{R_q - 1},
+\end{equation}
+where $s_q$ is the score on topic $q$ and $R_q$ is the number of runs with a
+response on that topic. \texttt{NR\_RANK} is the mean of $p_q(r)$ over topics. A
+plain mean over topics lets an easy topic, where every system scores high, count as
+much as one that separates systems. Ranking within each topic removes that
+difficulty term first, in the spirit of score
+standardization~\cite{webber2008standardization}. We use a percentile and not a
+$z$-score because the framework fills a missing cell with 0. That is the right
+floor for a percentile and the wrong one for a $z$-score.
+
+\subsection{Room to think for reasoning models}
+\label{sec:budget}
+
+The organizers run submitted code with gpt-oss models, which reason before they
+answer. A reasoning model that uses up its reply budget stops in mid-thought and
+never writes its labels, and retrying with the same budget cannot help. So each
+retry doubles the budget, from 4,096 tokens to 8,192 and then 16,384, which still
+fits a context of 32,768 tokens. The first attempt keeps its original budget, so
+existing cache entries still match. Section~\ref{sec:failures} shows the effect.
+
+\subsection{Caching and replay}
+
+All calls go through the organizers' minima-llm client~\cite{minimallm}. Its SQLite
+cache keys on the model, the messages, the temperature and the reply budget, but
+not on the endpoint. Responses are sorted by run id before any prompt is built, so
+prompts are byte-identical from one run to the next. This is what lets TIRA replay
+the judge from its cache with the endpoint switched off.

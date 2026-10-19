@@ -1,10 +1,40 @@
 # TREC 2026 AutoJudge: Team IRIS-MST
 
-**Draft notebook paper. Last updated 2026-09-22.**
+**Draft notebook paper. Last updated 2026-10-19.**
 
 This is the short version, written to become the TREC notebook paper and to explain
 the work to someone who has not followed it. The full engineering record is in
-`WORK_LOG.md`.
+`WORK_LOG.md`. **The paper itself is now LaTeX, in `paper/`** (Overleaf format).
+This file stays as the plain-language version.
+
+### Read this first: the organizers re-scored the pilots on 2026-10-09
+
+TIRA now reports each human truth measure separately, and many more entries were
+added (385 on rag25-gen, 206 on ragtime25, 139 on dragun-repgen). The numbers in the
+sections below are from before that, so the LaTeX paper uses the new ones. What
+changed in substance:
+
+- **rag25-gen has two truth measures now**, Strict Vital Score and Sub Coverage.
+  NuggetRecall sits near the median on both (about 0.79 Kendall). With gpt-oss-120b,
+  in the organizers' run of our code, it reaches 0.839 Kendall and 0.710 tau AP-b on
+  Strict Vital Score, 20th of 385 on tau AP-b.
+- **ragtime25 splits the judges.** On Nugget Coverage, NuggetRecall is near the median
+  (0.697 Qwen3-30B, 0.728 gpt-oss-20b) and Corroborate is low (0.598). On F1 it is the
+  other way round: Corroborate 0.662 Kendall and 0.524 tau AP-b, well above the median,
+  and NuggetRecall only about 0.50. Recall rewards covering facts. Corroborate's
+  precision measure also punishes padding, which is what F1 adds.
+- **The ensemble's gain holds for one truth measure only.** Its tau AP-b on rag25-gen
+  Strict Vital Score is 0.695 against 0.634 for the best single model. On Sub Coverage
+  it is 0.562, worse than either model alone. The earlier scoring hid this.
+- **Length is no longer a strong shortcut.** The organizers' length baseline now
+  scores 0.193 on ragtime25, down from 0.558. The new ragtime25 truth is macro
+  averaged. Finding 3 below is out of date.
+- **The specificity-floor fix hurt on DRAGUN.** The organizers' run of our Corroborate
+  code (floor 0.50) scores 0.734 Kendall and 0.505 tau AP-b on dragun-repgen, against
+  0.755 and 0.608 for our earlier floor of 0.15. Finding 9 below said the fix made no
+  difference. That held on two pilots, not on the third.
+- **Test-set truth is not out yet.** TIRA shows only measure counts and averages for
+  rag26 and ragtime26.
 
 Status markers: **[done]** finished and measured, **[pending]** not yet measured.
 

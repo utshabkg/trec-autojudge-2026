@@ -40,7 +40,7 @@ CORROBORATE_SPEC = LeaderboardSpec(
             float,
             description=(
                 "Corroboration precision: the share of this report's own substantive sentences "
-                "that are corroborated by at least two other teams, gated by topical "
+                "that are corroborated by at least one other team, gated by topical "
                 "specificity so boilerplate does not count as universally corroborated. "
                 "Length-normalised by construction, so it penalises padding and "
                 "uncorroborated assertions. 0 to 1, higher is better."

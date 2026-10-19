@@ -138,3 +138,15 @@ __marimo__/
 
 # Everything the judges produce: outputs, logs, caches, submission files.
 /results/
+
+# LaTeX build output for the notebook paper. Overleaf builds it, nothing to commit.
+/paper/*.pdf
+/paper/*.aux
+/paper/*.bbl
+/paper/*.blg
+/paper/*.log
+/paper/*.out
+/paper/*.fls
+/paper/*.fdb_latexmk
+/paper/*.synctex.gz
+/paper/*.zip

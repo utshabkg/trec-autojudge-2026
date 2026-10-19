@@ -1,0 +1,153 @@
+\section{Analysis}
+\label{sec:analysis}
+
+\subsection{The two judges do best on different truth measures}
+
+On short answers \judge{NuggetRecall} is far ahead. On rag25-gen it reaches about
+0.79 Kendall on both truth measures, while \judge{Corroborate} stays at 0.26 to
+0.32. One reading is that good short answers stand out by stating precise facts
+that most teams did not, and a consensus bank cannot reward such facts by
+construction. This fits the regression to the median we worried about when
+designing \judge{Corroborate}, though other causes, such as the few sentences in a
+short answer, could explain it too.
+
+On long reports the picture splits by truth measure. On ragtime25 Nugget Coverage,
+\judge{NuggetRecall} reaches 0.697 with Qwen3-30B and 0.728 with gpt-oss-20b, close
+to the median of 0.726, and \judge{Corroborate} only 0.598. On F1 the order flips.
+\judge{Corroborate} reaches 0.662 Kendall and 0.524 \tauap, against medians of
+0.583 and 0.364, while \judge{NuggetRecall} reaches 0.47 to 0.52. If F1 has a
+precision side, as its name suggests, it penalizes padding, which a recall measure
+does not. \texttt{NPREC} does too, since every sentence that no other team
+corroborates lowers it. TIRA reports only the maximum over our measures, so we
+cannot confirm which \judge{Corroborate} measure produced its F1 score.
+
+The two judges also rank systems differently. On our first pilot runs, Kendall
+between the \texttt{NCOV} of \judge{Corroborate} and the \texttt{NR\_VITAL} of
+\judge{NuggetRecall} is 0.51 on ragtime25 and 0.25 on rag25-gen. Between
+\texttt{NPREC} and \texttt{NR\_VITAL} it is only 0.20 and $-$0.05. The four
+mean-based measures of \judge{NuggetRecall} agree with one another at 0.87 to 0.97
+on both pilots.
+
+Since TIRA keeps the best of a judge's measures, one leaderboard carrying the
+measures of both judges would have matched the better judge on every truth measure.
+That gain would come from the scoring rule rather than from better judging, and we
+submitted the judges as separate systems.
+
+\subsection{The judge model matters most}
+
+With the prompts held fixed, changing the LLM moved the score more than anything
+else we tried. These runs also differ in code version, reply budget and server
+(Section~\ref{sec:setup}), so the comparison is not fully controlled. On rag25-gen
+Strict Vital Score, Qwen2.5-7B reaches 0.604, Qwen3-30B and gpt-oss-20b both reach
+0.783, and gpt-oss-120b reaches 0.839 in the organizers' run of our code. On
+dragun-repgen gpt-oss-120b reaches 0.804, against about 0.59 for the two smaller
+models.
+
+The 7B model does not fail on format. Over 5,302 calls it returned no unreadable
+reply. It judges less accurately. On the small synthetic dataset that ships with
+the starter kit, it gave the worst run 38\% recall where Qwen3-30B gave that run
+0\%, which suggests it grants partial credit too freely. We did not count its
+labels by type on the pilots.
+
+The reasoning model helps more on long reports. On ragtime25 Nugget Coverage,
+gpt-oss-20b beats Qwen3-30B by 0.031 Kendall and 0.036 \tauap, although 2.9\% of
+its judgments stayed unreadable and 5 of 122 topics fell back to a title-only key.
+Checking twenty facts against a long report seems to reward a model that reasons
+first. On F1 the two are within noise (0.517 against 0.500). On short answers they
+tie on Strict Vital Score Kendall at 0.783, though gpt-oss-20b is lower on its
+\tauap\ (0.601 against 0.621). On Sub Coverage gpt-oss-20b is behind on Kendall
+(0.736 against 0.788) and slightly ahead on \tauap\ (0.622 against 0.615).
+
+The outlier is our own Qwen3-30B run on dragun-repgen, at 0.141. We first read it
+as a design failure. A key written from a news article might list the article's
+facts instead of what a good report about it should say. The organizers' runs
+refute that as the whole story, since the same design reaches 0.59 with the two
+smaller models and 0.804 with gpt-oss-120b. Our run used the same reply budgets as
+our rag25-gen run, which scored 0.783, and no topic needed a fallback key. So the
+model, or how Qwen3-30B handles a whole article as the request, is the likelier
+cause, but we have not tested it. \pending{Re-run the current code with Qwen3-30B
+on dragun-repgen and report it here.}
+
+\subsection{Ranking within each topic}
+
+Re-aggregating the identical Qwen3-30B judgments by within-topic rank raises
+rag25-gen Kendall from 0.783 to 0.792 on Strict Vital Score and from 0.788 to 0.809
+on Sub Coverage, and \tauap\ by 0.013 on both. It costs no extra LLM calls, and
+since the judgments are identical, the run-to-run noise of
+Section~\ref{sec:noise} does not apply to this comparison. On ragtime25 it does
+worse: 0.681 against 0.697 on Nugget Coverage and 0.465 against 0.500 on F1. One
+possible reason is that a rank keeps only the order of runs on a topic, and on long
+reports the size of the gaps between runs carries information. Because the reported
+score is a maximum, emitting both forms costs nothing, which is what our
+\run{nuggetrecall-rank} systems do.
+
+\subsection{Averaging two LLMs helps at the top, on one truth measure}
+\label{sec:ensemble}
+
+Our ensemble ranks runs within each topic by the \texttt{NR\_VITAL} of each model
+and averages the two percentiles with equal weight. No weight was fitted. On
+rag25-gen Strict Vital Score its \tauap\ is 0.695, 34th of 385 entries, against
+0.634 for Qwen3-30B (the better of its two rows) and 0.601 for gpt-oss-20b alone. Two judges that make different
+mistakes seem to cancel some of each other's errors about the best systems. On Sub
+Coverage, though, the ensemble is worse than either model on \tauap, at 0.562
+against 0.628 and 0.622. On ragtime25 it never beats gpt-oss-20b alone, since
+averaging dilutes the stronger judge.
+
+We chose the ensemble for rag26 under the earlier scoring, which reported one
+maximum over both rag25-gen truth measures and so showed only the gain. Under the
+current scoring the gain holds for one truth measure and reverses for the other. Our
+other rag26 systems hedge that choice.
+
+\subsection{Length is a weak shortcut under the current truth}
+
+The organizers' length baseline reaches 0.152 Kendall on rag25-gen and 0.193 on
+ragtime25 under the current truth measures. Under the earlier scoring it reached
+0.558 on ragtime25, and we spent design effort keeping our measures from rewarding
+length, as LLM evaluators are known to do~\cite{dubois2024length}. Length explains
+far less of the revised ragtime25 truth measures, and we do not know which part of
+the change caused that. So whether length looks like a strong shortcut depends on
+how the truth is computed, not only on the track. A judge checked against one truth
+computation should be checked again against the other.
+
+\subsection{An inert threshold, and what fixing it did}
+\label{sec:floor}
+
+\judge{Corroborate} filters claims by how specific they are to the topic,
+measured as the cosine between the claim and the topic. We first set that floor to
+0.15 and swept it from 0 to 0.20. Every value gave the same bank, which we read as
+a sign that the parameter did not matter. We then measured what the encoder
+actually produces on hand-written sentences about a made-up topic: 0.587 to 0.753
+for specific facts, 0.361 to 0.472 for boilerplate hedges, and 0.266 to 0.319 even
+for nonsense sentences. The floor and its whole sweep sat below all of it, so the
+filter kept everything on every dataset. This was not harmless. A hedge is exactly
+what every team writes, so hedges took top places in a bank sorted by team count.
+
+We moved the floor to 0.50, between hedges and facts, and added a warning when a
+filter keeps everything or nothing. When we submitted, the pilots showed no
+difference between the two floors under the scoring then in force: 0.323 against
+0.323 on rag25-gen and 0.690 against 0.691 on ragtime25. So we kept 0.50, because it
+makes the filter do its job. Our submitted \judge{Corroborate} systems use it.
+
+The current numbers are less kind. On ragtime25 F1 the scores fell by 0.009 in our
+run and by 0.018 in the organizers' run. On dragun-repgen, in the organizers' run,
+Kendall fell from 0.755 to 0.734 and \tauap\ from 0.608 to 0.505. Our own 0.50 runs
+on the other two pilots and the organizers' runs of the same setting differ by at
+most 0.009 Kendall, so runs of one setting vary by about 0.01. That is far less
+than the drop of 0.1 in \tauap\ on dragun-repgen, though we have not run that pilot
+at 0.50 ourselves. What carries over is the check, not the new floor. Report the
+range of values a threshold actually sees, and warn when it never fires, because a
+sweep over a dead parameter looks exactly like a robust one.
+
+\subsection{Run-to-run noise}
+\label{sec:noise}
+
+vLLM does not produce bit-identical output across different batch
+compositions~\cite{he2025nondeterminism}, so the same configuration run twice gives
+slightly different judgments. We measured its size by accident. On ragtime25 we
+re-ran Qwen3-30B with one measure added, which cannot lower a maximum, and with a
+larger reply budget that no Qwen3-30B reply had reached. The score still fell by
+0.010 under the earlier scoring. Under the current one it fell by 0.014 on Nugget
+Coverage and by 0.019 on F1, while \tauap\ moved by 0.001 and 0.007. We therefore
+treat Kendall differences below 0.02 as noise and claim none of them. We report no
+significance tests, and no comparison in this paper is a claim of beating another
+entry.

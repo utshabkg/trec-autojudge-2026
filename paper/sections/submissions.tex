@@ -1,0 +1,58 @@
+\section{Submitted Systems}
+\label{sec:submissions}
+
+Table~\ref{tab:submissions} lists what we submitted. Every data submission covers
+every run and every topic of its test set, which a script checked before each
+upload, since a partial leaderboard is rejected.
+
+\begin{table}
+  \caption{Our submissions. Data systems were produced by us. Code submissions were
+  run by the organizers with their own models.}
+  \label{tab:submissions}
+  \small
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}lllcc@{}}
+    \toprule
+    System & Judge & Model & rag26 & ragtime26\\
+    \midrule
+    \multicolumn{5}{@{}l}{\emph{Data submissions}}\\
+    \run{nuggetrecall-best}    & NuggetRecall & Qwen3-30B   & $\bullet$ & $\bullet$\\
+    \run{nuggetrecall-rank}    & NuggetRecall & Qwen3-30B   & $\bullet$ & $\bullet$\\
+    \run{nuggetrecall-gptoss}  & NuggetRecall & gpt-oss-20b &           & $\bullet$\\
+    \run{ensemble-qwen-gptoss} & NuggetRecall & both        & $\bullet$ &          \\
+    \run{corroborate-best}     & Corroborate  & none        & $\bullet$ & $\bullet$\\
+    \midrule
+    \multicolumn{5}{@{}l}{\emph{Code submissions}}\\
+    \run{rank-dioptre}         & NuggetRecall & organizers' & $\bullet$ & $\bullet$\\
+    \run{grave-node}           & NuggetRecall & organizers' & $\bullet$ & $\bullet$\\
+    \run{lead-racer}           & Corroborate  & none        & $\bullet$ & $\bullet$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\run{nuggetrecall-best} is our main system. Under the scoring in force at the time,
+\judge{NuggetRecall} scored higher than \judge{Corroborate} on both pilots that
+resemble the test sets. \run{nuggetrecall-rank} adds \texttt{NR\_RANK} to the same
+judgments. We computed it from the submitted leaderboard instead of judging again,
+so the run-to-run noise of Section~\ref{sec:noise} cannot enter. On rag25-gen this
+computation matches the judge's own to twelve decimal places. We added
+\run{nuggetrecall-gptoss} because gpt-oss-20b was our best judge on ragtime25. On
+ragtime26 it left 163 of 5,041 judgments unreadable, 3.2\%, and 3 of 103 topics on
+a title-only key. We added \run{ensemble-qwen-gptoss} for its gain in \tauap\ on
+rag25-gen (Section~\ref{sec:ensemble}). \run{corroborate-best} is the LLM-free
+method. It uses the 0.50 specificity floor, the same configuration as
+\run{lead-racer}.
+
+The two \judge{NuggetRecall} code submissions differ in one respect.
+\run{grave-node} carries the growing reply budget of Section~\ref{sec:budget} and
+\run{rank-dioptre} does not. We registered \run{grave-node} after seeing what a fixed
+budget did to gpt-oss-20b on rag26 (Figure~\ref{fig:budget}), and asked the
+organizers to treat it as our main code submission.
+
+\subsection{Test-set results}
+
+\pending{The organizers have not released test-set scores yet. Add a table here with
+Kendall and \tauap\ per truth measure for every system in
+Table~\ref{tab:submissions}, including each model the organizers ran our code
+submissions with, and compare it with the pilot predictions in
+Section~\ref{sec:results}.}

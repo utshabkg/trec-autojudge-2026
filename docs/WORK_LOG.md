@@ -833,6 +833,78 @@ team can gain from its own runs.
 (`results/cache`) and logs (`results/logs`). The docs moved to `docs/`. Entries below
 dated earlier name paths as they were then, so read them with `results/` in front.
 
+### 2026-10-19
+
+- **Started the notebook paper in LaTeX**, in `paper/` (acmart `sigconf`, `nonacm`,
+  so it opens in Overleaf as is). Nine pages, compiled locally with tectonic from a
+  scratch conda env, since neither machine has TeX. Red `\pending` markers flag what
+  is still open. Bibliography entries we could not confirm carry a `VERIFY` comment.
+- **No 2026 notebook deadline is published yet.** The NIST participant pages still
+  show earlier years and the notebook links return 404. The conference is
+  2026-11-16 to 18 in Gaithersburg, in-person registration closes 2026-11-02. In
+  earlier years notebooks were due about two weeks before the conference, so plan
+  for early November.
+- **The organizers re-scored the rag25-gen and ragtime25 pilots on 2026-10-09.** Every
+  entry there was re-evaluated (run ids start `2026-10-09`), and TIRA now reports one
+  column pair per truth measure: Strict Vital Score and Sub Coverage on rag25-gen,
+  Nugget Coverage Macro, Citation Support and F1 Macro on ragtime25. Citation Support
+  reads 0.000 for all 206 entries, so it carries no information yet. dragun-repgen
+  still uses the old Max/Min columns. The leaderboards grew to 385, 206 and 139 entries,
+  mostly other teams' variants and organizer runs of code submissions. Nothing in the
+  organizers' public repositories describes the change. The new numbers are in
+  `docs/NOTEBOOK_PAPER.md` (top section) and in the paper.
+- **What the re-scoring changes for us.** Our old rag25-gen Max Kendall equals today's
+  Sub Coverage column (0.788 for nuggetrecall-best), so that pilot is consistent. On
+  ragtime25 every number moved: nuggetrecall-best 0.739 became 0.697 (Nugget
+  Coverage), gpt-oss-20b 0.789 became 0.728, so "10th of 105" no longer holds.
+  Corroborate is our best on F1 Macro (0.662 Kendall, 0.524 tau AP-b, 32nd of 206 on
+  tau AP-b), where NuggetRecall reaches only about 0.50. The length baseline fell from
+  0.558 to 0.193 on ragtime25.
+- **The ensemble's top-weighted gain depends on the truth measure.** rag25-gen tau
+  AP-b: 0.695 on Strict Vital Score (best single 0.634), but 0.562 on Sub Coverage
+  (best single 0.628). The old single maximum showed only the first.
+- **The working specificity floor costs on DRAGUN.** lead-racer, the organizers' CPU run
+  of Corroborate with floor 0.50, scores 0.734 Kendall and 0.505 tau AP-b on
+  dragun-repgen, against 0.755 and 0.608 for our run at the old inert 0.15
+  (config checked: `results/output/dragun-repgen/corroborate/best-all-all/best.config.yml`
+  says 0.15). Our own 0.50 re-runs of rag25-gen and ragtime25 ran on CPU (see
+  2026-09-23), like the organizers' runs, and differ from theirs by at most 0.009
+  Kendall. So variation between runs of the same setting is about 0.01, far below the
+  0.1 tau drop on DRAGUN, and the floor is the likely cause. We have not run DRAGUN at
+  0.50 ourselves. Our test-set Corroborate submissions use 0.50.
+- **Organizer runs since 2026-09-26.** On both test sets: grave-node with
+  Qwen2.5-7B-Instruct, gpt-oss-20b, gpt-oss-120b and a model listed as
+  Qwen/Qwen3.8-27B-FP8, rank-dioptre with the first three, and lead-racer (finished).
+  No test-set truth yet.
+- **Noise under the new scoring.** The ragtime25 re-run that only added NR_RANK (which
+  cannot lower a maximum) is now 0.014 lower on Nugget Coverage and 0.019 lower on F1,
+  against 0.010 before. Still under the 0.02 line we use.
+- **The DRAGUN answer keys of the old Qwen3-30B run are complete**: 30 topics, no
+  title-only fallback, median 20 facts and 8 vital. So a fallback does not explain the
+  0.141. That run used reply budgets of 1,536 (key) and 1,024 (judging). Still open.
+- **Paper reviewed before sharing.** One agent checked every number against TIRA, and a
+  four-lens workflow (bibliography checked online, a reviewer read, policy and style)
+  had each finding re-checked by a skeptic. All table cells and ranks held. Corrections
+  that matter beyond wording: all our Qwen runs, pilots and submitted
+  nuggetrecall-best, used reply budgets of 1,536 (key) and 1,024 (judging), not only
+  the DRAGUN run, so the old budget does not explain DRAGUN's 0.141. The ragtime25
+  "noise" re-run also had a 4,096 budget, which no Qwen3-30B reply needs. A reply that
+  labels at least floor(0.8 n) facts is accepted and its unlabeled facts count as no.
+  The bank's two-team rule, not the leave-one-team-out weight, is what keeps a solo
+  claim out. The weight drops the scored team's own vote. The paper now discloses that
+  the growing reply budget followed an unreadable-count on rag26 (counts only, no text,
+  no truth). Kendall between the judges, recomputed from our pilot leaderboards:
+  NCOV vs NR_VITAL 0.51 (ragtime25) and 0.25 (rag25-gen), NPREC vs NR_VITAL 0.20 and
+  -0.05. Pilot teams: rag25-gen 18, ragtime25 13, dragun-repgen 9. No pilot response
+  reached the 40,000-character cap. tau and the 0.62 band edge came from kiddie and
+  were never swept on the pilots. Also fixed NPREC's description in
+  `judges/corroborate/measures.py`, which said two other teams where the config uses
+  one.
+- **Removed a claim we could not support.** NOTEBOOK_PAPER.md said we had checked that
+  none of our measures is mostly length. No such measurement is recorded, and on the
+  test sets counting words would read restricted text. The paper does not make the
+  claim.
+
 ### 2026-09-26
 
 - **Cleaned the repository layout**, on both machines. About 50 generated items sat at
