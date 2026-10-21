@@ -39,9 +39,9 @@ With the prompts held fixed, changing the LLM moved the score more than anything
 else we tried. These runs also differ in code version, reply budget and server
 (Section~\ref{sec:setup}), so the comparison is not fully controlled. On rag25-gen
 Strict Vital Score, Qwen2.5-7B reaches 0.604, Qwen3-30B and gpt-oss-20b both reach
-0.783, and gpt-oss-120b reaches 0.839 in the organizers' run of our code. On
-dragun-repgen gpt-oss-120b reaches 0.804, against about 0.59 for the two smaller
-models.
+0.783, and gpt-oss-120b reaches 0.839 in the organizers' run of our code. We leave
+dragun-repgen out of this comparison for the reasons in
+Section~\ref{sec:dragun}.
 
 The 7B model does not fail on format. Over 5,302 calls it returned no unreadable
 reply. It judges less accurately. On the small synthetic dataset that ships with
@@ -58,15 +58,44 @@ tie on Strict Vital Score Kendall at 0.783, though gpt-oss-20b is lower on its
 \tauap\ (0.601 against 0.621). On Sub Coverage gpt-oss-20b is behind on Kendall
 (0.736 against 0.788) and slightly ahead on \tauap\ (0.622 against 0.615).
 
-The outlier is our own Qwen3-30B run on dragun-repgen, at 0.141. We first read it
-as a design failure. A key written from a news article might list the article's
-facts instead of what a good report about it should say. The organizers' runs
-refute that as the whole story, since the same design reaches 0.59 with the two
-smaller models and 0.804 with gpt-oss-120b. Our run used the same reply budgets as
-our rag25-gen run, which scored 0.783, and no topic needed a fallback key. So the
-model, or how Qwen3-30B handles a whole article as the request, is the likelier
-cause, but we have not tested it. \pending{Re-run the current code with Qwen3-30B
-on dragun-repgen and report it here.}
+\subsection{DRAGUN cannot rank LLM judge settings}
+\label{sec:dragun}
+
+Our first \judge{NuggetRecall} run on dragun-repgen, with Qwen3-30B, scored 0.141.
+The organizers' runs of our code scored about 0.59 with Qwen2.5-7B and with
+gpt-oss-20b, and 0.804 with gpt-oss-120b. We made six more runs to find out why
+(Table~\ref{tab:dragun}).
+
+The code is not the cause. The current code with Qwen3-30B scored 0.041.
+
+The input differs, though. The topics file named in the local release gives the
+judge a question, a summary of the article's claims and a fact-checker background.
+The answer keys from the organizers' runs show that the copy on TIRA gives only the
+article's headline: their title field holds the headline on all 30 topics. We
+rebuilt headline-only topics locally, and the two copies then behaved alike. Our
+Qwen2.5-7B run on headlines agrees with the organizers' Qwen2.5-7B run at 0.73
+Kendall on \texttt{NR\_VITAL}, against 0.28 for our run on the released topics. Our
+\judge{Corroborate} run on headlines at floor 0.50 reproduces the organizers'
+\run{lead-racer} leaderboard exactly, with Kendall 1.000 on every measure.
+
+Matching the input did not close the gap. On headlines, our Qwen2.5-7B run scored
+0.190, where the organizers' run of the same setup scored 0.587, and Qwen3-30B
+scored 0.054. Two runs of the same setup can differ this much because every run
+writes new answer keys, only 2 of 30 of which came out identical to the organizers'
+here, and because the pilot has only 28 systems. On the 12 runs the release marks
+as priority, our Qwen2.5-7B ranking and the organizers' agree at only 0.36 to 0.79
+Kendall, depending on the measure.
+
+So dragun-repgen cannot tell us which model or setting suits \judge{NuggetRecall}.
+Its scores for this judge range from 0.04 to 0.80 across our runs and the
+organizers' runs, and the 0.804 of gpt-oss-120b is a single run.
+\judge{Corroborate} is deterministic, so its scores there are stable from run to
+run. One lesson carries over to any track: check that the data you validate on
+locally is what the evaluation platform feeds your judge. On rag25-gen the two
+copies differ only in which field holds the request, which our judges happen to
+handle. On dragun-repgen they differ in substance, and we found out only after the
+deadline. TIRA does not let participants download runs on the test sets, so we
+could not make the same check there.
 
 \subsection{Ranking within each topic}
 
@@ -128,15 +157,16 @@ difference between the two floors under the scoring then in force: 0.323 against
 0.323 on rag25-gen and 0.690 against 0.691 on ragtime25. So we kept 0.50, because it
 makes the filter do its job. Our submitted \judge{Corroborate} systems use it.
 
-The current numbers are less kind. On ragtime25 F1 the scores fell by 0.009 in our
-run and by 0.018 in the organizers' run. On dragun-repgen, in the organizers' run,
-Kendall fell from 0.755 to 0.734 and \tauap\ from 0.608 to 0.505. Our own 0.50 runs
-on the other two pilots and the organizers' runs of the same setting differ by at
-most 0.009 Kendall, so runs of one setting vary by about 0.01. That is far less
-than the drop of 0.1 in \tauap\ on dragun-repgen, though we have not run that pilot
-at 0.50 ourselves. What carries over is the check, not the new floor. Report the
-range of values a threshold actually sees, and warn when it never fires, because a
-sweep over a dead parameter looks exactly like a robust one.
+The current numbers are less kind. On ragtime25 F1 our score fell by 0.009. On
+dragun-repgen, on the same released topics, Kendall fell from 0.755 to 0.739 and
+\tauap\ from 0.608 to 0.516. \judge{Corroborate} is deterministic, so this is the
+effect of the floor, not run-to-run variation, though on a pilot with 28 systems a
+drop in \tauap\ of 0.09 can come from a few pairs near the top. The organizers' run
+at 0.50, which saw headline topics (Section~\ref{sec:dragun}), scored 0.734 and
+0.505, so the topic text mattered far less than the floor. What carries over is the
+check, not the new floor. Report the range of values a threshold actually sees, and
+warn when it never fires, because a sweep over a dead parameter looks exactly like
+a robust one.
 
 \subsection{Run-to-run noise}
 \label{sec:noise}
@@ -148,6 +178,8 @@ re-ran Qwen3-30B with one measure added, which cannot lower a maximum, and with 
 larger reply budget that no Qwen3-30B reply had reached. The score still fell by
 0.010 under the earlier scoring. Under the current one it fell by 0.014 on Nugget
 Coverage and by 0.019 on F1, while \tauap\ moved by 0.001 and 0.007. We therefore
-treat Kendall differences below 0.02 as noise and claim none of them. We report no
+treat Kendall differences below 0.02 as noise on rag25-gen and ragtime25 and claim
+none of them. On dragun-repgen, with far fewer systems, the spread is much larger
+(Section~\ref{sec:dragun}). We report no
 significance tests, and no comparison in this paper is a claim of beating another
 entry.

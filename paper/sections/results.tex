@@ -42,26 +42,35 @@ organizers' baseline judge, which scores each response by its length.
 \end{table*}
 
 \begin{table}
-  \caption{dragun-repgen, read from TIRA on 2026-10-19. Maximum over all truth
-  measures and all of the judge's measures. \org\ marks organizer runs of our
-  code, \run{rank-dioptre} and \run{lead-racer}.}
+  \caption{dragun-repgen. Maximum over all truth measures and all of the judge's
+  measures. Topics: \emph{rel.} is the topics file named in the local release,
+  \emph{head.} the article headline only, which is what TIRA gives the judge.
+  \org\ marks organizer runs of our code, \run{rank-dioptre} and
+  \run{lead-racer}. $^{*}$ marks the run made with our September code. Field rows
+  read on 2026-10-19, our later runs on 2026-10-21.}
   \label{tab:dragun}
   \small
-  \begin{tabular}{@{}llcc@{}}
+  \setlength{\tabcolsep}{4pt}
+  \begin{tabular}{@{}llccc@{}}
     \toprule
-    Judge & Model & K & \tauap\\
+    Judge & Model & Topics & K & \tauap\\
     \midrule
-    Length baseline & & 0.391 & 0.184\\
-    Field median    & & 0.668 & 0.533\\
-    Field best      & & 0.821 & 0.700\\
+    Length baseline & & & 0.391 & 0.184\\
+    Field median    & & & 0.668 & 0.533\\
+    Field best      & & & 0.821 & 0.700\\
     \midrule
-    \judge{NuggetRecall} & Qwen3-30B                & 0.141 & 0.306\\
-    \judge{NuggetRecall} & Qwen2.5-7B\org           & 0.587 & 0.453\\
-    \judge{NuggetRecall} & gpt-oss-20b\org          & 0.589 & 0.446\\
-    \judge{NuggetRecall} & gpt-oss-120b\org         & \textbf{0.804} & \textbf{0.649}\\
+    \judge{NuggetRecall} & Qwen3-30B$^{*}$  & rel.  & 0.141 & 0.306\\
+    \judge{NuggetRecall} & Qwen3-30B        & rel.  & 0.041 & 0.173\\
+    \judge{NuggetRecall} & Qwen3-30B        & head. & 0.054 & 0.239\\
+    \judge{NuggetRecall} & Qwen2.5-7B       & rel.  & 0.215 & 0.312\\
+    \judge{NuggetRecall} & Qwen2.5-7B       & head. & 0.190 & 0.263\\
+    \judge{NuggetRecall} & Qwen2.5-7B\org   & head. & 0.587 & 0.453\\
+    \judge{NuggetRecall} & gpt-oss-20b\org  & head. & 0.589 & 0.446\\
+    \judge{NuggetRecall} & gpt-oss-120b\org & head. & \textbf{0.804} & \textbf{0.649}\\
     \midrule
-    \judge{Corroborate}, floor 0.15 & none          & 0.755 & 0.608\\
-    \judge{Corroborate}, floor 0.50 & none\org      & 0.734 & 0.505\\
+    \judge{Corroborate}, floor 0.15 & none        & rel.  & 0.755 & 0.608\\
+    \judge{Corroborate}, floor 0.50 & none        & rel.  & 0.739 & 0.516\\
+    \judge{Corroborate}, floor 0.50 & none\org    & head. & 0.734 & 0.505\\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -81,5 +90,7 @@ entries on \tauap. \judge{Corroborate} stays between 0.26 and 0.32 there. On lon
 reports the better of our two judges depends on the truth measure.
 \judge{NuggetRecall} is our best on Nugget Coverage and \judge{Corroborate} on F1,
 where its \tauap\ is 32nd of 206 entries (Section~\ref{sec:analysis}). On
-dragun-repgen, \judge{NuggetRecall} with gpt-oss-120b is 4th of 139 entries on
-Kendall and \judge{Corroborate} is 8th.
+dragun-repgen, \judge{Corroborate} is 8th of 139 entries on Kendall. One run of
+\judge{NuggetRecall} with gpt-oss-120b is 4th, but Section~\ref{sec:dragun} shows
+that the scores of \judge{NuggetRecall} on this pilot swing too widely to rank
+models.

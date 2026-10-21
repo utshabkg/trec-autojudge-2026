@@ -29,10 +29,18 @@ changed in substance:
 - **Length is no longer a strong shortcut.** The organizers' length baseline now
   scores 0.193 on ragtime25, down from 0.558. The new ragtime25 truth is macro
   averaged. Finding 3 below is out of date.
-- **The specificity-floor fix hurt on DRAGUN.** The organizers' run of our Corroborate
-  code (floor 0.50) scores 0.734 Kendall and 0.505 tau AP-b on dragun-repgen, against
-  0.755 and 0.608 for our earlier floor of 0.15. Finding 9 below said the fix made no
-  difference. That held on two pilots, not on the third.
+- **The specificity-floor fix hurt on DRAGUN.** Our own run at floor 0.50 on the same
+  topics scores 0.739 Kendall and 0.516 tau AP-b on dragun-repgen, against 0.755 and
+  0.608 at the old floor of 0.15. Finding 9 below said the fix made no difference.
+  That held on two pilots, not on the third.
+- **DRAGUN cannot rank LLM models for NuggetRecall (2026-10-21).** The 0.141 was not
+  the code: the current code with Qwen3-30B scores 0.041. TIRA also gives the judge
+  different topics from the released file (only the article headline), which we
+  confirmed by reproducing the organizers' runs. But even with the same model and the
+  same headline topics, our run scored 0.190 where the organizers' scored 0.587. Every
+  run writes new answer keys and the pilot has few systems, so scores swing from 0.04
+  to 0.80. Finding 1 below is out of date on this point, and the "request is a whole
+  news article" description was wrong.
 - **Test-set truth is not out yet.** TIRA shows only measure counts and averages for
   rag26 and ragtime26.
 

@@ -19,7 +19,6 @@ Everything unfinished is printed in **red brackets**. In the source, search for
 
 - author surname, advisor name and email, and the acknowledgments
 - the test-set results table (Section 9.1), once the organizers publish scores
-- a re-run of the current code with Qwen3-30B on dragun-repgen (Section 7.2)
 - the public URL of the code (Section 11). The GitHub repository is private now
 
 Every bibliography entry was checked online on 2026-10-19 (Crossref, arXiv, DBLP),

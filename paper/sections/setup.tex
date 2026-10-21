@@ -46,9 +46,10 @@ We saw only that count and vLLM's count of replies stopped at the length limit,
 never a response, a grade or any truth.
 
 \judge{NuggetRecall} is not deterministic from run to run
-(Section~\ref{sec:noise}). \judge{Corroborate} is, on the same hardware. One re-run
-of \judge{NuggetRecall} moved Kendall by 0.010 to 0.019, so we treat Kendall
-differences below 0.02 as noise. The same re-run moved \tauap\ by less than 0.01,
+(Section~\ref{sec:noise}). \judge{Corroborate} is, and its output matched to within
+0.002 between our GPU and the organizers' CPU. One re-run of \judge{NuggetRecall} on
+ragtime25 moved Kendall by 0.010 to 0.019, so we treat Kendall differences below
+0.02 as noise there and on rag25-gen. The same re-run moved \tauap\ by less than 0.01,
 but one re-run says little about a measure that leans on a few top systems, so
 \tauap\ differences are less certain than Kendall ones.
 

@@ -31,8 +31,11 @@ release ships them. The truth stays on the TIRA server. The only way to measure 
 judge is to run it on a pilot, upload the leaderboard and read back the correlation
 the organizers compute. Every pilot number in this paper was obtained that way.
 rag25-gen is the pilot closest to rag26, and ragtime25 the one closest to
-ragtime26. In dragun-repgen the request is not a question but a whole news article,
-about 11\,KB of text per topic, and the report is meant to help a reader assess it.
+ragtime26. In dragun-repgen each topic is a news article, and the report should
+help a reader assess it. The topics file named in the local release gives the judge
+a question as title, a summary of the article's claims of about 1.4\,KB as problem
+statement, and a fact-checker background. The copy on TIRA gives the judge only the
+article's headline (Section~\ref{sec:dragun}).
 
 \begin{table}
   \caption{Datasets. The test sets have no released truth. The pilots have human

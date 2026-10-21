@@ -833,6 +833,54 @@ team can gain from its own runs.
 (`results/cache`) and logs (`results/logs`). The docs moved to `docs/`. Entries below
 dated earlier name paths as they were then, so read them with `results/` in front.
 
+### 2026-10-21
+
+- **The DRAGUN question, settled as far as the pilot allows.** Seven pilot runs
+  uploaded to TIRA (all dragun-repgen, systems named below), scores read the same day:
+
+  | System | Judge, model, topics | Kendall | tau AP-b |
+  |---|---|---|---|
+  | nuggetrecall-best (Sept 22) | NR, Qwen3-30B, released | 0.141 | 0.306 |
+  | nuggetrecall-qwen-rerun | NR, Qwen3-30B, released, current code | 0.041 | 0.173 |
+  | nuggetrecall-qwen-headline | NR, Qwen3-30B, headline only | 0.054 | 0.239 |
+  | nuggetrecall-qwen7b-rerun | NR, Qwen2.5-7B, released | 0.215 | 0.312 |
+  | nuggetrecall-qwen7b-headline | NR, Qwen2.5-7B, headline only | 0.190 | 0.263 |
+  | rank-dioptre (organizers) | NR, Qwen2.5-7B, TIRA copy | 0.587 | 0.453 |
+  | corroborate-floor50 | Corroborate, floor 0.50, released | 0.739 | 0.516 |
+
+- **TIRA's DRAGUN copy is not the released topics file.** The release's own
+  datasets.yml points repgen at `trec-2025-dragun-requests-generated.jsonl` (question
+  as title, about 1.4 KB summary of the article's claims, fact-checker background).
+  The answer keys in the organizers' runs of our code show TIRA gives the judge the
+  article headline as title, matching `trec-2025-dragun-topics.jsonl` on all 30
+  topics, and nothing that reached the key beyond it. The old "the request is a whole
+  11 KB news article" was wrong for both copies: that file holds the article body,
+  but neither copy passes it to the judge as request text. Proof: our Qwen2.5-7B run
+  on headline-only topics agrees with the organizers' Qwen2.5-7B run at 0.73 Kendall
+  (NR_VITAL), against 0.28 on the released topics, and our Corroborate run on
+  headlines at floor 0.50 reproduces lead-racer exactly (Kendall 1.000 on all five
+  measures, largest score difference 0.0012, our GPU against their CPU). On rag25-gen
+  the copies differ only in the field holding the request (TIRA puts it in title,
+  the release in problem_statement), which both judges handle.
+- **How we checked.** `tira.rest_api_client.Client().download_zip_to_cache_directory(
+  task, dataset, team, run_id)` downloads our own pilot runs, organizer runs of our
+  code included, into `~/.tira/extracted_runs/`. Only output/ was read (leaderboard,
+  answer keys, config). The zips also carry the run's CACHE_DIR, which we deleted
+  unread. Test-set runs return HTTP 405, so the test-set copies cannot be compared.
+- **What it means.** The code was never the cause of 0.141. Neither, it seems, is
+  only the model: with matched input, our Qwen2.5-7B scored 0.190 where the organizers'
+  run of the same setup scored 0.587. Every run writes new answer keys (2 of 30 matched
+  the organizers' exactly), and on the 12 priority runs the two Qwen2.5-7B rankings
+  agree at only 0.36 to 0.79. So NuggetRecall's DRAGUN scores swing from 0.04 to 0.80
+  and the pilot cannot rank models for it. The paper says so in a new section 7.3 and
+  no longer leans on DRAGUN for the model comparison.
+- **The specificity floor, now measured cleanly.** Corroborate at 0.50 on the released
+  topics: 0.739 / 0.516, against 0.755 / 0.608 at 0.15. With headlines (lead-racer):
+  0.734 / 0.505. So the floor, not the topic text, explains the drop. Corroborate is
+  deterministic, so this is not run noise.
+- vLLM is stopped on node 54, and all outputs are pulled to this PC
+  (`results/output-dragun-*`, `results/dragun-headline/topics-headline.jsonl`).
+
 ### 2026-10-19
 
 - **Started the notebook paper in LaTeX**, in `paper/` (acmart `sigconf`, `nonacm`,
