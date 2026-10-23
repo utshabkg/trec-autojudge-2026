@@ -17,8 +17,9 @@ out of date.
 - Author surname, advisor name and email, acknowledgments.
 - A public link to the code. The GitHub repository is private now.
 - Test-set results. The organizers have not released them yet.
-- The organizers' answer on whether TIRA's test-set topics match the released files
-  (asked 2026-10-21). If they differ, the paper needs one more paragraph.
+- Whether TIRA's test-set topics match the released files. Laura's reply
+  (2026-10-23) covered DRAGUN only. It implies rag26 and ragtime26 needed no
+  conversion, but does not say so. If they differ, the paper needs one more paragraph.
 - The 2026 notebook deadline. Not published yet. The conference is 2026-11-16 to 18,
   so expect it in early November.
 
@@ -186,6 +187,10 @@ runs, which is noise (finding 6).
    - Even with the same model and the same headline input, our run scored 0.190 and
      the organizers' scored 0.587. Each run writes new answer keys and the pilot has
      only 28 systems, so the scores swing from 0.04 to 0.80.
+   - The organizers confirmed (2026-10-23) that DRAGUN topics do not fit the AutoJudge
+     format and were converted by hand, and that the original article topics are in
+     the release. A judge could look up the original article by its request id. We
+     did not try this.
    - Lesson: check that what you validate on locally is what the platform feeds your
      judge.
 

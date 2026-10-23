@@ -838,6 +838,20 @@ team can gain from its own runs.
 (`results/cache`) and logs (`results/logs`). The docs moved to `docs/`. Entries below
 dated earlier name paths as they were then, so read them with `results/` in front.
 
+### 2026-10-23
+
+- **Laura's reply on DRAGUN.** DRAGUN topics do not fit the AutoJudge interface, so she
+  converted them as a fallback, and the original topics are in the release. She
+  suggests a judge read the original topic with the same request_id when it exists,
+  and fall back to the provided request otherwise. She also plans to pass task
+  information through the starter kit in the next cycle. Her reply does not explain
+  why TIRA's copy (headline only, proven by reproducing lead-racer) differs from the
+  converted file the release's datasets.yml names, and does not answer the test-set
+  question. Paper: one sentence each in sections 2.2 and 7.3, nothing else changes.
+- **Docs brought up to date** (commit 7626823): NOTEBOOK_PAPER.md rewritten as the
+  plain-language twin of paper/, README results replaced, dated notes on the
+  September update and this log.
+
 ### 2026-10-21
 
 - **The DRAGUN question, settled as far as the pilot allows.** Seven pilot runs

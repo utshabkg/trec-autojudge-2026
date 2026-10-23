@@ -95,7 +95,9 @@ locally is what the evaluation platform feeds your judge. On rag25-gen the two
 copies differ only in which field holds the request, which our judges happen to
 handle. On dragun-repgen they differ in substance, and we found out only after the
 deadline. TIRA does not let participants download runs on the test sets, so we
-could not make the same check there.
+could not make the same check there. Both DRAGUN copies keep the article's id as
+the request id, so a judge could look up the original article in the release's
+topics file and use it as context. We did not try this.
 
 \subsection{Ranking within each topic}
 
