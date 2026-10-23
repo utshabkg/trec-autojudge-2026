@@ -20,6 +20,8 @@ Everything unfinished is printed in **red brackets**. In the source, search for
 - author surname, advisor name and email, and the acknowledgments
 - the test-set results table (Section 9.1), once the organizers publish scores
 - the public URL of the code (Section 11). The GitHub repository is private now
+- the organizers' answer on whether TIRA's test-set topics match the released
+  files (asked 2026-10-21). If not, add a paragraph to Sections 7.3 and 10
 
 Every bibliography entry was checked online on 2026-10-19 (Crossref, arXiv, DBLP),
 and every number against TIRA and `docs/WORK_LOG.md`.

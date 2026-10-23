@@ -1,358 +1,253 @@
-# TREC 2026 AutoJudge: Team IRIS-MST
+# TREC 2026 AutoJudge: Team IRIS-MST, plain-language version
 
-**Draft notebook paper. Last updated 2026-10-19.**
+**Last updated 2026-10-23.** The paper itself is LaTeX, in `paper/` (open it in
+Overleaf from `results/paper-overleaf.zip`). This file says the same things in plain
+words, for the professor and for anyone new. Every number here matches the paper.
+The detailed record behind it is `docs/WORK_LOG.md`.
 
-This is the short version, written to become the TREC notebook paper and to explain
-the work to someone who has not followed it. The full engineering record is in
-`WORK_LOG.md`. **The paper itself is now LaTeX, in `paper/`** (Overleaf format).
-This file stays as the plain-language version.
+Where numbers come from: TIRA, read 2026-10-19 (rag25-gen, ragtime25) and 2026-10-21
+(our extra DRAGUN runs). The organizers re-scored the pilots on 2026-10-09, so any
+older number in the work log or in the September update uses the old scoring and is
+out of date.
 
-### Read this first: the organizers re-scored the pilots on 2026-10-09
+---
 
-TIRA now reports each human truth measure separately, and many more entries were
-added (385 on rag25-gen, 206 on ragtime25, 139 on dragun-repgen). The numbers in the
-sections below are from before that, so the LaTeX paper uses the new ones. What
-changed in substance:
+## Still open before the paper is final
 
-- **rag25-gen has two truth measures now**, Strict Vital Score and Sub Coverage.
-  NuggetRecall sits near the median on both (about 0.79 Kendall). With gpt-oss-120b,
-  in the organizers' run of our code, it reaches 0.839 Kendall and 0.710 tau AP-b on
-  Strict Vital Score, 20th of 385 on tau AP-b.
-- **ragtime25 splits the judges.** On Nugget Coverage, NuggetRecall is near the median
-  (0.697 Qwen3-30B, 0.728 gpt-oss-20b) and Corroborate is low (0.598). On F1 it is the
-  other way round: Corroborate 0.662 Kendall and 0.524 tau AP-b, well above the median,
-  and NuggetRecall only about 0.50. Recall rewards covering facts. Corroborate's
-  precision measure also punishes padding, which is what F1 adds.
-- **The ensemble's gain holds for one truth measure only.** Its tau AP-b on rag25-gen
-  Strict Vital Score is 0.695 against 0.634 for the best single model. On Sub Coverage
-  it is 0.562, worse than either model alone. The earlier scoring hid this.
-- **Length is no longer a strong shortcut.** The organizers' length baseline now
-  scores 0.193 on ragtime25, down from 0.558. The new ragtime25 truth is macro
-  averaged. Finding 3 below is out of date.
-- **The specificity-floor fix hurt on DRAGUN.** Our own run at floor 0.50 on the same
-  topics scores 0.739 Kendall and 0.516 tau AP-b on dragun-repgen, against 0.755 and
-  0.608 at the old floor of 0.15. Finding 9 below said the fix made no difference.
-  That held on two pilots, not on the third.
-- **DRAGUN cannot rank LLM models for NuggetRecall (2026-10-21).** The 0.141 was not
-  the code: the current code with Qwen3-30B scores 0.041. TIRA also gives the judge
-  different topics from the released file (only the article headline), which we
-  confirmed by reproducing the organizers' runs. But even with the same model and the
-  same headline topics, our run scored 0.190 where the organizers' scored 0.587. Every
-  run writes new answer keys and the pilot has few systems, so scores swing from 0.04
-  to 0.80. Finding 1 below is out of date on this point, and the "request is a whole
-  news article" description was wrong.
-- **Test-set truth is not out yet.** TIRA shows only measure counts and averages for
-  rag26 and ragtime26.
-
-Status markers: **[done]** finished and measured, **[pending]** not yet measured.
+- Author surname, advisor name and email, acknowledgments.
+- A public link to the code. The GitHub repository is private now.
+- Test-set results. The organizers have not released them yet.
+- The organizers' answer on whether TIRA's test-set topics match the released files
+  (asked 2026-10-21). If they differ, the paper needs one more paragraph.
+- The 2026 notebook deadline. Not published yet. The conference is 2026-11-16 to 18,
+  so expect it in early November.
 
 ---
 
 ## Abstract
 
-We built two automatic judges for TREC 2026 AutoJudge and found that they succeed on
-different kinds of task. *Corroborate* needs no LLM. It builds its reference answer
-from what many independent teams agree on, and it judges long reports well. On short
-RAG answers it fails. *NuggetRecall* uses an LLM to write an answer key from the
-question alone, then checks each response against it. It judges short answers and
-long reports well, and fails when the "question" is really a document. On the pilot
-data NuggetRecall reached the field median on RAG and ranked 32 of 96 on RAGTIME, so
-it is our main submission.
+AutoJudge asks for automatic judges that rank the systems of a host track the way
+human assessors would. We built two judges with opposite assumptions.
+
+- **NuggetRecall** asks an LLM to write an answer key of 8 to 20 facts from the
+  question alone. Then, for each response, it asks which facts the response states.
+- **Corroborate** uses no LLM. It pools all responses to a topic and counts how many
+  different teams state each claim. A team's own vote never counts for itself.
+
+On the pilots, the two judges do best on different human measures. NuggetRecall is
+our better judge for nugget coverage. Corroborate is our better judge for F1 on long
+reports, and it fails on short answers. The choice of LLM mattered more than
+anything else. We also found six ways a judge can fail without any error message.
 
 ---
 
 ## 1. The task
 
-A normal TREC track asks systems to answer questions. AutoJudge asks the reverse: given
-many systems' answers, **rank the systems**. A judge is scored by how closely its
-ranking matches the ranking made by human assessors, using Kendall's tau and a
-top-weighted variant, tau AP-b.
+A normal TREC track asks systems to answer questions. AutoJudge asks the reverse:
+given many systems' answers, **rank the systems**. A judge is scored by how closely
+its ranking matches the human ranking, using Kendall's tau and a top-weighted
+version, tau AP-b.
 
-We judged two 2026 test sets:
-
-| Test set | Source | Systems | Topics |
-|---|---|---|---|
-| rag26 | TREC RAG, short cited answers | 83 runs, 25 teams | 119 |
-| ragtime26 | TREC RAGTIME, long cited reports | 49 runs, 10 teams | 103 |
-
-Two things shaped every decision:
-
-- **No human answers are available**, not even for the older pilot datasets. So we
-  can only measure our judges by uploading results and letting the organizers score
-  them against assessments we never see.
-- **The official score takes the best of all the measures a judge reports.** So a
-  judge may report a few different measures and is credited with its best one.
-
----
-
-## 2. Method
-
-### Judge 1: Corroborate, no LLM
-
-The idea comes from how search engines are evaluated, where the pooled results of many
-systems stand in for the set of relevant documents. Here we pool the *answers*.
-
-1. For each topic, split every system's answer into sentences and group sentences that
-   say the same thing, using sentence embeddings.
-2. Give each group a weight equal to the number of **different teams** that said it.
-   Counting teams rather than runs matters, because teams submit several near-identical
-   runs.
-3. Score a system on how many of the well-supported groups it covers.
-4. **Leave-one-team-out:** when scoring a team, ignore its own votes. Otherwise a team
-   gets credit for facts only it stated. This is the novel part.
-
-### Judge 2: NuggetRecall, with an LLM
-
-1. For each topic, an LLM writes an **answer key** of 8 to 20 short facts that a good
-   answer should contain, using only the question. Each fact is marked vital or okay.
-2. For each system's answer, the LLM labels every fact as supported, partly supported,
-   or missing.
-3. The score is the share of facts covered, with vital facts counted separately.
-
-Building the key from the question alone means it cannot be biased by what any system
-happened to write.
-
----
-
-## 3. Experimental setup
-
-- **Validation:** we ran both judges on three pilot datasets from 2025, uploaded the
-  results, and read back the organizers' scores.
-- **LLM for NuggetRecall:** Qwen3-30B-A3B-Instruct (FP8), served locally with vLLM on
-  one RTX 6000 Ada GPU. The organizers re-run submitted code with
-  Qwen2.5-7B-Instruct and gpt-oss-20b, so we also tested NuggetRecall on those.
-- **Embeddings for Corroborate:** bge-base-en-v1.5, plus nli-deberta-v3-base to decide
-  borderline matches.
-
----
-
-## 4. Results
-
-### Pilot results **[done]**
-
-Kendall's tau against human assessments, with our rank among all entries on each
-pilot's leaderboard.
-
-| Pilot | Answer type | Corroborate | NuggetRecall | Field median | Best entry |
+| Dataset | Kind | Runs | Teams | Topics | Responses |
 |---|---|---|---|---|---|
-| rag25-gen | short RAG answers | 0.323 (92 of 98) | **0.801 (42 of 98)** | 0.787 | 0.862 |
-| ragtime25 | long reports | 0.691 (67 of 103) | **0.739 (36 of 103)** | 0.726 | 0.802 |
-| dragun-repgen | reports about a news article | **0.755 (7 of 61)** | 0.141 (57 of 61) | 0.650 | 0.821 |
+| rag26 (test) | short cited answers | 83 | 25 | 119 | 9,877 |
+| ragtime26 (test) | long cited reports | 49 | 10 | 103 | 5,047 |
+| rag25-gen (pilot) | short cited answers | 51 | 18 | 105 | 5,332 |
+| ragtime25 (pilot) | long cited reports | 59 | 13 | 122 | 7,198 |
+| dragun-repgen (pilot) | reports on a news article | 28 | 9 | 30 | 840 |
 
-The NuggetRecall column is the five-measure judge. Ranks move as other teams upload,
-so they are read on the date shown.
+- **The pilots have human truth, but only TIRA has it.** We test a judge by running
+  it on a pilot, uploading the result, and reading back the score.
+- **TIRA reports the best of a judge's measures** for each human measure. So a judge
+  may report several measures. It also means a judge with many measures gets a
+  small free advantage.
+- **Since 2026-10-09 each human measure is scored separately.** rag25-gen has Strict
+  Vital Score and Sub Coverage. ragtime25 has Nugget Coverage and F1 (and Citation
+  Support, which is 0.000 for everyone, so we ignore it). DRAGUN still reports one
+  number.
 
-rag25-gen is the pilot most like rag26, and ragtime25 the one most like ragtime26.
-NuggetRecall wins on both, so it is our main submission.
+---
 
-### What we submitted
+## 2. The two judges
 
-Every submission covers every run and every topic of its test set, which the upload
-guard checks before anything is sent, since a partial submission is rejected. Test-set
-scores come out after TREC.
+### NuggetRecall (with an LLM)
 
-| System | Judge and LLM | rag26 | ragtime26 | Why |
+1. For each topic, the LLM writes an **answer key** of 8 to 20 facts from the question
+   only. Each fact is VITAL or OKAY.
+2. For each response, one LLM call labels every fact: support, partial, or no.
+3. Scores: share of vital facts covered, share of all facts, a strict version that
+   ignores partial credit, and an importance-weighted version.
+4. A fifth score, **NR_RANK**, ranks the runs within each topic first and then
+   averages. Same judgments, different averaging.
+
+Why build the key from the question only? A long-winded system cannot shape it, and
+it can include facts every system missed.
+
+Details that matter: a reply must label at least 80% of the facts or it is retried.
+A reasoning model gets a bigger reply budget on each retry (4,096, then 8,192, then
+16,384 tokens). Every call is cached, so TIRA can replay the judge without the LLM.
+
+### Corroborate (no LLM)
+
+1. For each topic, split every response into sentences and group sentences that say
+   the same thing (embedding similarity of at least 0.80).
+2. A group enters the "bank" only if at least **two different teams** said it. Teams,
+   not runs, because teams submit several near-copies.
+3. Score a response on how many bank groups it covers (NCOV), and on how many of its
+   own sentences other teams also said (NPREC, which punishes padding).
+4. **Leave-one-team-out:** when scoring team t, a group's weight is the number of
+   *other* teams that said it. The idea comes from the classic pool-bias test in
+   retrieval evaluation.
+
+---
+
+## 3. Setup
+
+- **LLMs we ran:** Qwen3-30B-A3B-Instruct (FP8), gpt-oss-20b, and Qwen2.5-7B-Instruct,
+  on one RTX 6000 Ada with vLLM, on compute node 54.
+- **LLMs the organizers ran our code with:** Qwen2.5-7B, gpt-oss-20b, gpt-oss-120b, and
+  on the test sets also Qwen3.8-27B.
+- **Corroborate:** bge-base-en-v1.5 for embeddings, nli-deberta-v3-base for
+  borderline matches. No LLM, no network.
+
+---
+
+## 4. Results on the pilots
+
+Kendall's tau (and tau AP-b where it matters). "Field" is every entry on the TIRA
+leaderboard: 385 on rag25-gen, 206 on ragtime25, 139 on DRAGUN. Many entries are
+variants from the same team, so ranks are a loose guide.
+
+### rag25-gen (short answers, like rag26)
+
+| Judge | Strict Vital Score | Sub Coverage |
+|---|---|---|
+| Length only (baseline) | 0.152 | 0.094 |
+| Field median / best | 0.804 / 0.906 | 0.772 / 0.866 |
+| NuggetRecall, Qwen3-30B | 0.783 | 0.788 |
+| NuggetRecall, Qwen3-30B, rank only | 0.792 | **0.809** |
+| NuggetRecall, gpt-oss-20b | 0.783 | 0.736 |
+| NuggetRecall, Qwen2.5-7B | 0.604 | 0.654 |
+| NuggetRecall, gpt-oss-120b (organizers' run) | **0.839** (tau AP-b 0.710, 20th of 385) | 0.776 |
+| Ensemble of Qwen3-30B and gpt-oss-20b | 0.812 (tau AP-b 0.695) | 0.761 |
+| Corroborate | 0.257 | 0.323 |
+
+### ragtime25 (long reports, like ragtime26)
+
+| Judge | Nugget Coverage | F1 |
+|---|---|---|
+| Length only (baseline) | 0.193 | 0.155 |
+| Field median / best | 0.726 / 0.825 | 0.583 / 0.808 |
+| NuggetRecall, Qwen3-30B | 0.697 | 0.500 |
+| NuggetRecall, gpt-oss-20b | **0.728** | 0.517 |
+| Ensemble | 0.709 | 0.493 |
+| Corroborate (floor 0.15) | 0.598 | **0.662** (tau AP-b 0.524, 32nd of 206) |
+
+### dragun-repgen
+
+Corroborate scores 0.755, 8th of 139. NuggetRecall ranges from 0.04 to 0.80 across
+runs, which is noise (finding 6).
+
+---
+
+## 5. Findings
+
+1. **The two judges do best on different human measures.** NuggetRecall follows
+   nugget coverage. Corroborate follows F1 on long reports, probably because NPREC
+   punishes padding, which a recall measure never does. On short answers Corroborate
+   fails (0.26 to 0.32), likely because good short answers stand out by saying what
+   others missed, and a consensus cannot reward that. The two judges rank systems
+   differently: Kendall 0.51 between them on ragtime25 and 0.25 on rag25-gen.
+
+2. **The LLM matters most.** On rag25-gen, same prompts: Qwen2.5-7B 0.604, Qwen3-30B
+   0.783, gpt-oss-20b 0.783, gpt-oss-120b 0.839. The 7B model follows the format fine
+   but seems to give partial credit too easily. On long reports, gpt-oss-20b beats
+   Qwen3-30B on Nugget Coverage by 0.031.
+
+3. **Ranking within each topic helps on short answers, not on long ones.** Same
+   judgments, no extra LLM calls: rag25-gen up from 0.788 to 0.809, ragtime25 down
+   from 0.697 to 0.681. Since TIRA takes the best measure, we report both.
+
+4. **Averaging two LLMs helps at the top, but only for one human measure.** On
+   rag25-gen Strict Vital Score the ensemble's tau AP-b is 0.695, against 0.634 for
+   the best single model. On Sub Coverage it is 0.562, worse than either model. The
+   old scoring hid this, and we chose the ensemble for rag26 under it.
+
+5. **Answer length is a weak shortcut now.** The length baseline was 0.558 on
+   ragtime25 under the old scoring and is 0.193 under the new one. How the human
+   truth is computed changes what looks like a shortcut.
+
+6. **DRAGUN cannot rank LLM settings for NuggetRecall.** Our first run scored 0.141.
+   We checked six more runs (2026-10-21):
+   - The code was not the cause: the current code scores 0.041.
+   - TIRA gives the judge only the article headline, while the released file gives a
+     question, a claims summary and a fact-checker background. We confirmed this by
+     reproducing the organizers' runs.
+   - Even with the same model and the same headline input, our run scored 0.190 and
+     the organizers' scored 0.587. Each run writes new answer keys and the pilot has
+     only 28 systems, so the scores swing from 0.04 to 0.80.
+   - Lesson: check that what you validate on locally is what the platform feeds your
+     judge.
+
+7. **A filter that never fires looks like a filter that does not matter.**
+   Corroborate's topic-specificity floor was set to 0.15, below every value the
+   encoder ever produces (facts score 0.59 to 0.75, filler 0.36 to 0.47), so it kept
+   everything. A sweep from 0 to 0.20 showed "no effect". We moved it to 0.50. That
+   did not help: on DRAGUN it lowered Corroborate from 0.755 to 0.739 (tau AP-b 0.608
+   to 0.516). The lesson is the check, not the number: warn when a filter keeps
+   everything.
+
+8. **Run-to-run noise.** The same NuggetRecall setup run twice on ragtime25 moved by
+   0.010 to 0.019. We treat differences under 0.02 as noise there and on rag25-gen.
+   DRAGUN is far noisier (finding 6). Corroborate gives identical output every time.
+
+---
+
+## 6. Silent failures, the most reusable part
+
+Six times a judge failed without an error, or would have:
+
+| What failed | What happened | What caught it |
+|---|---|---|
+| LLM client defaults (60 s timeout, batch abort after 25 failures) | gpt-oss-20b scored 0.000: 26 slow calls wiped all 5,302 judgments | the 0.000, then a check that measures vary |
+| Client settings sticking across phases | would have zeroed long answers only, so the judge would quietly reward short ones | a code audit |
+| Reasoning model out of reply budget | 27% of rag26 judgments unreadable on the first try | vLLM's counters. Fix: bigger budget per retry, 12.4% down to 2.7% |
+| A whole batch failing at once | all judgments of the batch lost | the run log |
+| Replay check with nothing to replay | rehearsal "passed" while making no LLM calls | reading the output |
+| Specificity floor below every value | filter kept 100% | measuring the encoder's range |
+
+General lesson: a check that two runs agree must sit next to a check that the run
+did something.
+
+---
+
+## 7. What we submitted
+
+| System | Judge | LLM | rag26 | ragtime26 |
 |---|---|---|---|---|
-| `nuggetrecall-best` | NuggetRecall, Qwen3-30B | **[done]** | **[done]** | the main submission |
-| `nuggetrecall-rank` | same judgments, plus the rank measure | **[done]** | **[done]** | better on the rag pilot, never worse |
-| `nuggetrecall-gptoss` | NuggetRecall, gpt-oss-20b | | **[done]** | best single judge on the ragtime pilot |
-| `ensemble-qwen-gptoss` | both LLMs, equal weight | **[done]** | | best top-weighted score on the rag pilot |
-| `corroborate-best` | Corroborate, no LLM | **[done]** | **[done]** | the LLM-free method, for comparison |
+| nuggetrecall-best (main) | NuggetRecall | Qwen3-30B | yes | yes |
+| nuggetrecall-rank | NuggetRecall + NR_RANK | Qwen3-30B | yes | yes |
+| nuggetrecall-gptoss | NuggetRecall | gpt-oss-20b | | yes |
+| ensemble-qwen-gptoss | NuggetRecall, both LLMs | both | yes | |
+| corroborate-best | Corroborate | none | yes | yes |
 
-**Code submissions [done].** Both judges are registered on TIRA, NuggetRecall as
-`rank-dioptre` and Corroborate as `lead-racer`, so the organizers can re-run them,
-NuggetRecall against their own choice of LLM. NuggetRecall is registered a second time
-as `grave-node`, with the reply-budget fix from finding 11, because the organizers grade
-with gpt-oss-20b and without that fix it left 12.4% of rag26 judgments unreadable. Getting there took more than the
-judges did. The rehearsal first gave the container no LLM at all, so the judge fell
-back to an all-zero leaderboard and every TIRA check still passed. Then two
-independent reviews of the real submission path found that it would have failed
-outright on deadline day, because TIRA refuses an untidy working folder only on a
-real submission, never on a rehearsal. Both are fixed, and the rehearsal now fails
-wherever the real run would.
+Code submissions on TIRA: **rank-dioptre** (NuggetRecall), **grave-node** (NuggetRecall
+with the bigger retry budget, our main one), **lead-racer** (Corroborate).
 
 ---
 
-## 5. Findings worth reporting
+## 8. Limitations
 
-1. **Corroborate fails where its assumption breaks. NuggetRecall's DRAGUN failure was
-   probably the model, not the design.** Corroborate assumes that what many teams agree
-   on is what matters. That holds for long reports but not for short answers, where the
-   best systems stand out by stating things others missed.
+- We tuned only on the 2025 pilots, which have 28 to 59 systems each.
+- The pilots were re-scored after we chose our submissions.
+- NuggetRecall depends on the LLM's own knowledge and never sees citations.
+- Corroborate cannot reward a correct fact no other team stated.
+- We do not know if TIRA's test-set topics match the released files.
 
-   We first read NuggetRecall's 0.141 on DRAGUN the same way: the request there is a
-   whole news article, so we guessed the answer key lists facts from the article rather
-   than what a good report should say. The organizers' own runs of our registered code
-   (`rank-dioptre`) refute that as the whole story. On DRAGUN it scores **0.804 with
-   gpt-oss-120b (4th of 75)**, and about 0.59 with both gpt-oss-20b and
-   Qwen2.5-7B-Instruct, all far above our 0.141 with Qwen3-30B. So the design works
-   there. What went wrong in our run is open: the model, or the older code that run
-   used, which lacked the rank measure. **[pending]** a re-run of our current code with
-   Qwen3-30B on DRAGUN would separate the two.
+## 9. Data handling
 
-   The same organizer runs give our best result anywhere: **0.839 on rag25-gen with
-   gpt-oss-120b, 6th of 115** (tau AP-b 0.710). A much larger judge model helps.
-
-2. **The two judges measure different things.** Their rankings agree only weakly
-   (Kendall 0.50 on ragtime25, 0.23 on rag25-gen), so they are complementary rather
-   than redundant.
-
-3. **Answer length is a strong shortcut on some tracks and useless on others.** Simply
-   ranking systems by answer length scores 0.558 on ragtime25 but only 0.152 on
-   rag25-gen. A judge that looks good on RAGTIME may just be rewarding long answers, so
-   we checked that none of our measures is mostly length.
-
-4. **A small reasoning model judged long reports better than a larger instruct model.**
-   Same judge, same prompts, only the LLM changes:
-
-   | Judge LLM | rag25-gen (short answers) | ragtime25 (long reports) |
-   |---|---|---|
-   | Qwen3-30B-A3B-Instruct (FP8) | 0.788 | 0.739 (rank 37 of 105) |
-   | gpt-oss-20b (reasoning) | 0.783 | **0.789 (rank 10 of 105)** |
-   | Qwen2.5-7B-Instruct | 0.654 | not run |
-
-   On short answers the two larger models tie, within our noise of about 0.01. On long
-   reports the reasoning model is 0.05 better, five times the noise, even though 2.9%
-   of its replies came back unreadable and 5 of 122 topics fell back to a title-only
-   answer key. Checking twenty facts against a long report seems to reward a model
-   that reasons before it answers. The 7B model follows the output format just
-   as reliably as the others but judges less accurately, mostly by giving partial
-   credit too freely, and still stays far above Corroborate (0.323) and the length
-   shortcut (0.152).
-
-5. **An LLM judge can fail silently and completely, and the failure looks like a bad
-   judge.** Running the same judge on gpt-oss-20b scored **0.000**, last of 94. The
-   model was not at fault. The LLM client times a call out after 60 seconds, which a
-   reasoning model does not always meet, and it then abandons the entire batch once
-   25 calls have failed. So 26 slow calls out of 5,302 destroyed all 5,302, every
-   measure came out the same for every system, and the leaderboard ranked nothing.
-   The score alone gives no hint of this. What caught it was a check we run before
-   every upload, which refuses any leaderboard whose measures do not vary between
-   systems. Anyone building an LLM judge should have that check and should not trust
-   a low score to mean a weak judge. After raising the timeout and turning the batch
-   breaker off, the same configuration scores **0.783**, which is within 0.005 of the
-   much larger model. This mattered beyond the pilot: the organizers re-run submitted
-   code against gpt-oss-20b, so our code submission would have scored zero.
-
-6. **Reproducibility checks can be satisfied by two runs that both do nothing.** TIRA
-   proves an LLM judge is reproducible by re-running the container with the endpoint
-   removed and confirming the cached prompts give the same leaderboard. Our first
-   rehearsal passed that check while making zero LLM calls: the first run cached
-   nothing, so the replay reproduced nothing, and the two agreed exactly. A sameness
-   check needs a liveness check beside it. Ours is now that the container's own
-   output must rank systems apart before the job can pass.
-
-7. **The same silent shape keeps coming back, so we went looking for it.** After two
-   of these in one day we audited both judges specifically for failure modes that
-   yield a plausible-looking but meaningless leaderboard. That found a third, and the
-   worst: the judge configures its LLM client once per phase in one process, using
-   settings that stick. A single missed connection while the model server was still
-   loading pinned a five-second timeout onto the whole judging phase. Because the
-   calls that exceed five seconds are the long answers, the zeros land unevenly, the
-   measures still vary, and the constancy check cannot see it. That one would have
-   ranked systems partly by brevity, and answer length correlates +0.558 with human
-   truth on ragtime25, so the submitted score could have gone negative.
-
-8. **How you average matters as much as what you measure.** Our judge scored each
-   response for how many key facts it covered, then averaged that over topics. That
-   lets an easy topic, where every system scores high, count as much as one that
-   actually separates systems. Ranking systems within each topic first, then
-   averaging the ranks, uses the identical judgments and scores **0.801** on
-   rag25-gen against 0.788, and is better on the top-weighted measure too. It costs
-   no extra LLM calls. On the other pilot it is slightly worse, which costs nothing,
-   because the official score is the best of our measures, so we emit both.
-
-9. **A threshold on a cosine is meaningless without knowing the encoder's scale, and
-   a parameter sweep will not tell you.** Corroborate filters pooled claims by how
-   specific they are to the topic, measured as cosine similarity under
-   `bge-base-en-v1.5`. We set that floor to 0.15 and swept it over 0.0 to 0.20. Then
-   we measured what the encoder actually produces: specific facts score 0.587 to
-   0.753, boilerplate hedges 0.361 to 0.472, and deliberately nonsense sentences
-   still score 0.266. Our floor and its entire sweep sat below all of it, so the
-   filter kept everything, on every dataset, for the whole of development. The sweep
-   could not reveal this, because every swept value gave an identical result and so
-   read as "this parameter does not matter".
-
-   This is not a harmless no-op. The bank is ranked by how many separate teams state
-   a claim, and a hedge is exactly what every team writes, so hedges took the top
-   slots and then counted as corroborated in the measure whose job is to penalise
-   padding.
-
-   We then re-ran Corroborate with a floor that actually filters, and it made **no
-   measurable difference**: 0.323 on rag25-gen before and after, to three decimal
-   places, and 0.691 against 0.690 on ragtime25. The measures themselves moved by at
-   most 0.015. So we had guessed that the dead filter might explain Corroborate's
-   weakness on short answers, and the measurement says it does not. The weakness is
-   the one in finding 1: agreement between teams is simply not what separates good
-   short answers from bad ones. The general lesson still stands and is worth more
-   than the number: warn whenever a filter keeps everything or nothing, and report
-   the range actually observed. **[done]**
-
-10. **Two different LLM judges agree best about the top of the leaderboard.** We
-    combined the Qwen3-30B and gpt-oss-20b judgments with equal weight, ranking systems
-    within each topic by each model and averaging the two ranks. No weights were
-    fitted. On the pilots:
-
-    | | rag25-gen Kendall | rag25-gen **tau AP-b** | ragtime25 Kendall | ragtime25 tau AP-b |
-    |---|---|---|---|---|
-    | Qwen3-30B, best single measure | 0.801 | 0.628 | 0.739 | 0.599 |
-    | gpt-oss-20b | 0.783 | 0.622 | **0.789** | **0.617** |
-    | Both, equal weight | **0.812** | **0.695** | 0.769 | 0.605 |
-
-    On short answers the ensemble's Kendall gain is within noise, but its top-weighted
-    score rises by 0.067, far more than the run-to-run variation we saw on that
-    measure. tau AP-b mostly rewards getting the best systems right, so two judges
-    that err differently seem to cancel out each other's mistakes at the top. On long
-    reports gpt-oss alone is clearly better, and averaging it with a weaker judge only
-    dilutes it. So we submit the ensemble for rag26 and gpt-oss alone for ragtime26.
-    Choosing per track from two pilots risks some overfitting, and we say so.
-
-11. **A reasoning model can run out of room to think, and a retry must give it more.**
-    On rag26, gpt-oss-20b left 27% of its first-pass judgments unreadable. The LLM
-    server's own counters showed why: 5,020 of 13,275 requests stopped because they
-    hit the 4,096-token reply limit, so the model was still reasoning and never wrote
-    its answer. Our retries used to reword the prompt and send the same budget, which
-    cannot help. With the budget fixed at 4,096 on every attempt, 12.4% of judgments
-    stayed unreadable after three tries. Giving retries 8,192 and then 16,384 tokens
-    cut that to **2.7%**, 264 of 9,838, with no other change. The first attempt keeps
-    its original budget, so every cached reply still counts. The same model on the
-    rag25-gen pilot had needed almost no retries, so this only showed up on the test
-    data, which is a reason to watch retry counts rather than trust a pilot.
-
----
-
-## 5b. A caution on every number above
-
-Our judge is not deterministic run to run. vLLM does not produce bit-identical
-output across different batch compositions, so the same configuration re-run gives
-slightly different judgments. We measured the size of this by accident: re-running
-NuggetRecall on ragtime25 with nothing changed except an **added** measure moved the
-score by -0.010, which adding a measure cannot do, because the official score is the
-best of our measures.
-
-So roughly 0.01 Kendall is noise. We do not treat differences below about 0.02 as
-real, and we withdrew one earlier result on that basis: combining the two judges
-appeared to gain +0.012 on ragtime25, which is inside the noise, so we do not claim
-it. The gain from rank aggregation (+0.013 on the five-measure judge, +0.021 in an
-isolated re-aggregation of the identical leaderboard) sits at or above that line and
-is consistent in direction, which is why we do claim that one.
-
----
-
-## 6. Limitations
-
-- Corroborate cannot reward a correct fact that no other team found.
-- NuggetRecall depends on the LLM's knowledge to write the answer key, and on the
-  request being a real question.
-- We tuned only on the 2025 pilots, as the rules require, so the 2026 results may
-  differ.
-
----
-
-## 7. Reproducibility
-
-Code: `github.com/utshabkg/trec-autojudge-2026`, in `judges/corroborate/` and
-`judges/nuggetrecall/`. Both judges are submitted to TIRA as code, so the organizers
-can re-run them. Two of the 83 rag26 runs are expected to be our own TREC RAG 2026
-runs. We made no attempt to identify them, and Corroborate's leave-one-team-out rule
-stops any team from gaining from its own answers.
+We followed the AutoJudge data policy: on the test sets we read response text only
+for the first ten topics, and every choice by score came from the pilots. One fix,
+the bigger retry budget, followed a count of unreadable judgments on rag26. We saw
+only counts, never text or truth, and the paper says so. Two of the 83 rag26 runs
+are probably our own TREC RAG runs. We never tried to identify them.

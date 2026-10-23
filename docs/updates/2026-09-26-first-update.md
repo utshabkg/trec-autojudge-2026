@@ -1,5 +1,9 @@
 # TREC 2026 AutoJudge: first update
 
+> **Note, 2026-10-23.** This is a dated record and is kept as sent. Its numbers use the
+> scoring before the organizers re-scored the pilots on 2026-10-09, and its DRAGUN
+> explanation turned out wrong. Current numbers: `docs/NOTEBOOK_PAPER.md`.
+
 *team iris-mst, 2026-09-26*
 
 Our first update on this project, so I am start from the scratch.

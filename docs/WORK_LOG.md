@@ -1,6 +1,11 @@
 # TREC 2026 AutoJudge, team `iris-mst`: working document
 
-**Last updated: 2026-09-22 (official data submission lodged on both test sets).** This file is the detailed engineering record of the
+**Last updated: 2026-10-21.** Entries are dated and kept as written, so pilot
+numbers before 2026-10-09 use the old scoring. The current numbers are in
+`docs/NOTEBOOK_PAPER.md` and `paper/`, and the newest entries are at the top of
+section 8.
+
+**Originally started 2026-09-19.** This file is the detailed engineering record of the
 project: every decision with its reasoning, every measurement with its provenance,
 and every problem hit along the way. It is kept current as work proceeds.
 
