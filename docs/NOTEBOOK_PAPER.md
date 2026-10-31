@@ -15,7 +15,7 @@ date.
 
 ## Still open before the paper is final
 
-- Author surname, advisor name and email, acknowledgments.
+- Acknowledgments (funding, compute). Authors are in place.
 - A public link to the code. The GitHub repository is still private.
 - Test-set results. The organizers have not released them yet.
 - Whether TIRA's test-set topics match the released files. Laura's reply on 2026-10-23
