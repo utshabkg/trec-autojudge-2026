@@ -1,67 +1,67 @@
 \section{Limitations}
 
 \begin{itemize}
-  \item We made every score-based choice on the 2025 pilots, as the rules require.
-    They have 28 to 59 systems each, so the 2026 results may differ from what the
+  \item As the rules require, we made every score-based choice on the 2025 pilots.
+    Each pilot has 28 to 59 systems, so the 2026 results may differ from what the
     pilots suggest.
-  \item The organizers re-scored the pilots after we had made our choices. The
-    ensemble for rag26 looks better under the earlier scoring than under the
-    current one.
-  \item On dragun-repgen our local runs used different topic text from the copy on
-    TIRA. We do not know whether the test sets on TIRA match the released files,
-    and our data submissions used the released files.
-  \item \judge{NuggetRecall} depends on the LLM's own knowledge to write the answer
-    key, and on the request being a real information need. It never sees
-    citations, so it cannot judge attribution.
+  \item The organizers re-scored the pilots after we had made our choices. Our
+    rag26 ensemble looks better under the earlier scoring than under the current
+    one.
+  \item On dragun-repgen, our local runs used different topic text from the copy on
+    TIRA. We do not know whether the test sets on TIRA match the released files.
+    Our data submissions used the released files.
+  \item \judge{NuggetRecall} relies on what the LLM already knows to write the answer
+    key. It also needs the request to be a real information need. It never sees
+    citations, so it cannot judge attribution (Section~\ref{sec:nuggetrecall}).
   \item \judge{Corroborate} cannot reward a correct fact that no other team stated.
-    Consensus is a proxy for importance, not a measure of it, and a correct but rare
-    fact gets little weight. We did not run the ablations that would show how much
-    the leave-one-team-out weight and per-team voting each change the ranking.
-  \item Without truth on the test sets we could check only that our leaderboards
-    were complete and that every measure varied across systems. We ran no length
-    diagnostics on them. A script may compute such a statistic, but the policy
-    treats the result as restricted, and it could have steered choices that must
-    come from the pilots.
+    Agreement among teams stands in for importance but does not measure it. A fact
+    that is correct but rare gets little weight. We ran no ablation of the leave-one-team-out weight or of per-team voting. So we do not know how much either one changes the ranking.
+  \item With no ground truth for the test sets, we could check only that our
+    leaderboards were complete and that every measure varied across systems. We ran
+    no length diagnostics on them, such as whether scores simply follow response
+    length. A script may compute such a statistic, but the policy treats the result
+    as restricted. Knowing it could also have steered choices that must come from
+    the pilots.
 \end{itemize}
 
 \section{Data Handling and Reproducibility}
 \label{sec:disclosure}
 
 Development followed the AutoJudge data policy. On the test sets we read response
-content only for the first ten topics of each topics file, in file order, and every
-choice we made by score came from the pilots. Every bug but one reproduced on a
-pilot or on the synthetic dataset that ships with the starter kit, so we never
-needed the policy's scrubbing tool. The exception is the exhausted reply budget of
-Section~\ref{sec:failures}. It also occurs on the pilots, at lower rates, but we
-noticed it on rag26 and saw it there only as counts: unreadable judgments in our
-logs, and requests that vLLM stopped at the length limit. We read no response text
-to diagnose it. The answer keys of \judge{NuggetRecall} are built from the topic
-alone, so they may be read for any topic. The claim banks of \judge{Corroborate}
-are built from responses, and we inspected them only on the pilots.
+content only for the first ten topics of each topics file, in file order. Every
+choice we made by score came from the pilots. All bugs but one reproduced on a
+pilot or on the synthetic dataset. That is why we
+never needed the policy's scrubbing tool, which masks a failing record's content.
+The exception is the exhausted reply budget of Section~\ref{sec:failures}. It also
+occurs on the pilots at lower rates, but we noticed it on rag26 and saw it there
+only as counts. These were counts of unreadable judgments in our logs and of
+requests that vLLM stopped at the length limit. We read no response text to
+diagnose it. \judge{NuggetRecall} builds its answer keys from the topic alone, so
+they may be read for any topic. \judge{Corroborate} builds its
+claim banks from responses. We inspected those only on the pilots.
 
 We also submitted two generation runs to TREC 2026 RAG, so two of the 83 rag26 runs
-are probably ours. We made no attempt to identify them, by comparison with our own
-submissions or by any other means. Neither judge knows which runs are ours, and
-both treat every run alike. \judge{NuggetRecall} judges each response on its own
+are probably ours. We did not try to identify them, by comparison with our own
+submissions or by any other means. Neither judge knows which runs are ours. Both
+treat every run alike. \judge{NuggetRecall} judges each response on its own,
 against a key built from the topic. \judge{Corroborate} drops a team's own vote
-from each claim's weight, so a team's runs cannot raise the weight of the claims
-they are scored on.
+from each claim's weight. That way a team's runs cannot raise the weight of the
+claims they are scored on.
 
-Both judges are available as code submissions on TIRA. The source code, workflows
-and tests are at \pending{public repository URL}. \judge{NuggetRecall} reproduces
-from its prompt cache with the endpoint switched off. \judge{Corroborate} makes no
-network calls, and on the same inputs and hardware it produces byte-identical
-output.
+Both judges are on TIRA as code submissions. The source code, workflows and tests
+are at \pending{public repository URL}. With the endpoint switched off,
+\judge{NuggetRecall} reproduces its output from its prompt cache. \judge{Corroborate} makes no network
+calls. Given the same inputs and hardware, it produces byte-identical output.
 
 \section{Summary}
 
 We built two judges for TREC 2026 AutoJudge that fail in different places.
 \judge{NuggetRecall} writes an answer key from the question and does best on nugget
-coverage. \judge{Corroborate} trusts what many teams agree on, does best on F1 for
-long reports and fails on short answers. The largest effect we measured was the
-choice of judge model. The most useful lessons, though, concern failure. An LLM
-judge can lose most of its judgments without an error and still produce a
-leaderboard that looks plausible. A check that measures vary across systems, retry
-counts watched on the real data, and a liveness check beside every reproducibility
-check caught most such failures. An audit aimed at exactly this kind of failure
-caught the rest.
+coverage. \judge{Corroborate} trusts what many teams agree on. It does best on F1
+for long reports and fails on short answers. The choice of judge model had the
+largest effect we measured. Our most useful lessons, though, are about failure. An
+LLM judge can lose most of its judgments without raising an error and still produce
+a leaderboard that looks plausible. A few checks caught most such failures. One
+tests that measures vary across systems. Another watches retry counts on the real
+data. The last pairs every reproducibility check with a liveness check. An audit aimed at exactly this kind of
+failure caught the rest.

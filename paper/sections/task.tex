@@ -5,39 +5,41 @@
 
 Each AutoJudge dataset holds the topics of a host track and the anonymized runs
 submitted to it. A run contains one response per topic. A response is a list of
-sentences, each with optional citations to documents, plus metadata that names the
-run and an anonymized team. A judge reads all of this and writes a leaderboard:
-one score per run, topic and measure, plus an aggregate row per run. A judge may
-emit several measures.
+sentences, each with optional citations to documents. It also carries metadata that
+names the run and an anonymized team. A judge reads all of this and writes a
+leaderboard with one score per run, topic and measure, plus an aggregate row for
+each run. A judge may emit several measures.
 
-A complete submission has two parts. The \emph{data submission} consists of the
-leaderboards the judge produces on the test sets. The \emph{code submission} is
-the judge itself, packaged as a container on TIRA~\cite{froebe2023tira}, so that
-the organizers can run it again with an LLM of their choice. An LLM judge must
-also reproduce its own leaderboard with the LLM endpoint switched off, by replaying
-every call from its prompt cache.
+A complete submission has two parts. The \emph{data submission} is the set of
+leaderboards the judge produces on the test sets. The \emph{code submission} is the
+judge itself, packaged as a container that TIRA runs. This lets the organizers rerun
+it with an LLM of their choice. An LLM judge must also reproduce its own
+leaderboard with the LLM endpoint (the server that answers its calls) switched
+off. It does so by replaying every call from its prompt cache, a stored record of
+each prompt and the reply it received.
 
 \subsection{Data}
 
-Table~\ref{tab:data} lists the datasets. The two test sets come from the TREC 2026
-RAG track, whose responses are short cited answers, and the TREC 2026 RAGTIME
-track, whose responses are long cited reports. Teams often submit several close
-variants of one pipeline, so the table gives teams as well as runs. Both test
-releases carry the text of cited documents inline, for 99.1\% and 99.7\% of
-responses, and both are in English.
+Table~\ref{tab:data} lists the datasets. One test set comes from the TREC 2026
+RAG (retrieval-augmented generation) track, whose responses are short cited
+answers. The other comes from the TREC 2026 RAGTIME track, whose responses are
+long cited reports. Teams often submit several close variants of one pipeline,
+so the table counts teams as well as runs. Both test releases are in English.
+They carry the text of cited documents inline, for 99.1\% and 99.7\% of
+responses.
 
-The three pilot datasets come from TREC 2025 and have human assessments, but no
-release ships them. The truth stays on the TIRA server. The only way to measure a
+The three pilot datasets come from TREC 2025 and have human assessments. No release
+ships them, though. The truth stays on the TIRA server. The only way to measure a
 judge is to run it on a pilot, upload the leaderboard and read back the correlation
-the organizers compute. Every pilot number in this paper was obtained that way.
-rag25-gen is the pilot closest to rag26, and ragtime25 the one closest to
-ragtime26. In dragun-repgen each topic is a news article, and the report should
-help a reader assess it. DRAGUN topics do not fit the AutoJudge request format, so
-the organizers converted them. The release ships the original article topics beside
-a converted file, which its own configuration names: a question as title, a summary
-of the article's claims of about 1.4\,KB as problem statement, and a fact-checker
-background. The copy on TIRA instead gives the judge only the article's headline
-(Section~\ref{sec:dragun}).
+the organizers compute. Every pilot number in this paper was measured this way.
+Of the pilots, rag25-gen is closest to rag26 and ragtime25 is closest to ragtime26.
+Each topic in dragun-repgen is a news article. The report should help a reader
+assess it. DRAGUN topics do not fit the AutoJudge request format, so the organizers
+converted them. Next to the original article topics, the release ships a converted
+file. That is the file its own configuration names. In the converted file each
+topic has a question as title, a summary of the article's claims (about 1.4\,KB) as
+problem statement and a fact-checker background. The copy on TIRA instead gives
+the judge only the article's headline (Section~\ref{sec:dragun}).
 
 \begin{table}
   \caption{Datasets. The test sets have no released truth. The pilots have human
@@ -63,37 +65,34 @@ background. The copy on TIRA instead gives the judge only the article's headline
 \label{sec:scoring}
 
 TIRA correlates each measure a judge emits with each human truth measure, over the
-systems' aggregate scores. It uses Kendall's $\tau$~\cite{kendall1938new} and
-\tauap, the tie-aware form~\cite{urbano2017ties} of the AP rank
-correlation~\cite{yilmaz2008new}, which weights agreement at the top of the ranking
-more heavily. For each truth measure it reports the maximum over the judge's
-measures.
+systems' aggregate scores. It uses two rank correlations. Kendall's
+$\tau$~\cite{kendall1938new} measures how often two rankings put a pair of
+systems in the same order. \tauap\ is the AP rank correlation~\cite{yilmaz2008new} in its
+tie-aware form~\cite{urbano2017ties}. It gives more weight to agreement at the top
+of the ranking. For each truth measure TIRA reports the maximum over
+the judge's measures.
 
 On 2026-10-09 the organizers re-scored every entry on rag25-gen and ragtime25
-against a revised set of truth measures. rag25-gen now has two, Strict Vital Score
-and Sub Coverage. ragtime25 has Nugget Coverage Macro and F1 Macro, plus Citation
-Support, which currently reads 0.000 for every entry and which we leave out.
-dragun-repgen still reports one maximum over all its truth measures. The organizers
-have not described the revised measures in detail, so where we read meaning into
-them below, we go by their names. We made our design choices under the earlier
-scoring, which reported one maximum over all truth measures on every pilot. This
-paper reports the current numbers and says where the two disagree.
+against a revised set of truth measures. For rag25-gen there are now two, Strict
+Vital Score and Sub Coverage. For ragtime25 there are Nugget Coverage Macro and F1 Macro, shortened below to Nugget Coverage and F1. We leave out its third measure, Citation Support, which currently reads
+0.000 for every entry. On dragun-repgen TIRA still reports a single maximum over
+all its truth measures. The organizers have not described the revised measures in
+detail. Where we read meaning into them below, we go by their names. We made our
+design choices under the earlier scoring, which reported one maximum over all truth
+measures on every pilot. This paper gives the current numbers and notes where the
+two scorings disagree.
 
-Three properties of the scoring shaped both judges. First, since a maximum is
-taken, emitting several well-motivated measures costs nothing, so each judge emits
-four or five. The same rule flatters a system with many measures, because the best
-one is picked after the fact. Our single-measure rows in Table~\ref{tab:pilots},
-``rank only'' and the ensemble, do not get that help. Second, the earlier scoring
-also reported the minimum over all pairs of measures. We therefore oriented every
-measure so that higher is better. Third, in the organizers' evaluator, ties in a
-judge's scores are broken by input order, so a coarse score loses agreement at
-random. All our measures are continuous for that reason.
+Three features of the scoring shaped both judges. First, only the best measure
+counts, so emitting several well-motivated measures costs nothing. Each judge
+therefore emits four or five. The same rule flatters a system with many
+measures, because the best one is picked after the fact. Two of our rows in Table~\ref{tab:pilots} emit a single measure and so get no such help. These are ``rank only'' and the ensemble (Section~\ref{sec:results}).
+Second, the earlier scoring also reported the minimum over all pairs of measures.
+We therefore oriented every measure so that higher is better. Third, the
+organizers' evaluator breaks ties in a judge's scores by input order. A coarse
+score, one with few distinct values, therefore loses agreement at random. That is
+why all our measures are continuous.
 
 \subsection{Data policy}
 
-The track restricts what developers may look at, because the test responses are
-the test set. On the test sets we read response content only for the first ten
-topics of each topics file. We never tuned a parameter against a score on a test
-topic and made no attempt to identify the team behind any run. One engineering
-change followed a failure count on the test data. Sections~\ref{sec:setup}
-and~\ref{sec:disclosure} describe it.
+The track limits what developers may look at, because the test responses are
+themselves the test set. Section~\ref{sec:disclosure} explains how we kept to these limits. It also describes the one engineering change that followed a failure count on the test data.

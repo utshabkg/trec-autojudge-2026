@@ -1,11 +1,11 @@
 \section{Prompts}
 \label{app:prompts}
 
-Both prompts of \judge{NuggetRecall}, verbatim. Text in braces is filled in at run
-time. Each is sent as a single user message at temperature 0.
+Below are both prompts of \judge{NuggetRecall}, verbatim. Text in braces is filled
+in at run time. Each prompt is sent as a single user message at temperature 0.
 
-\paragraph{Answer key.} Called once per topic, with \texttt{min\_n}=8 and
-\texttt{max\_n}=20.
+\paragraph{Answer key.} We call this prompt once per topic, with \texttt{min\_n}=8
+and \texttt{max\_n}=20.
 \begin{lstlisting}
 You are building the answer key for evaluating responses to an information request.
 
@@ -24,8 +24,8 @@ Give between {min_n} and {max_n} items, most important first. Output only the li
 2. [OKAY] <fact>
 \end{lstlisting}
 
-\paragraph{Judging.} Called once per response. The facts are numbered from 1, one per
-line.
+\paragraph{Judging.} This one runs once per response. The facts are numbered from 1,
+one per line.
 \begin{lstlisting}
 You are checking which facts a response covers. Judge only what the response says. Never use outside knowledge.
 
@@ -54,8 +54,8 @@ Output {count} lines, numbered 1 to {count}.
 \end{lstlisting}
 
 \paragraph{Retry suffixes.} The first attempt sends the prompt as is. The second
-attempt appends the first line below and the third attempt the second, each after
-a blank line. Both prompts use the same suffixes.
+attempt appends the first line below. The third appends the second. Each suffix goes
+after a blank line. Both prompts share these suffixes.
 \begin{lstlisting}
 Reminder: follow the output format exactly, with no other text.
 Important: output only the numbered lines, exactly as specified, nothing else.

@@ -1,19 +1,21 @@
 \section{Results on the Pilots}
 \label{sec:results}
 
-Table~\ref{tab:pilots} gives the current TIRA scores on rag25-gen and ragtime25, and
-Table~\ref{tab:dragun} gives them on dragun-repgen. The field median and best are
-over every entry on each leaderboard, read on 2026-10-19: 385 entries on rag25-gen,
-206 on ragtime25 and 139 on dragun-repgen. Many entries are variants from the same
-team, so a rank among entries is only a loose guide. The length row is the
-organizers' baseline judge, which scores each response by its length.
+Table~\ref{tab:pilots} shows the current TIRA scores on rag25-gen and ragtime25.
+Table~\ref{tab:dragun} shows them on dragun-repgen. The field median and field best
+are taken over every entry on each leaderboard, as read on 2026-10-19. That covers
+385 entries on rag25-gen, 206 on ragtime25 and 139 on dragun-repgen. Many entries
+are variants from the same team, so a rank among entries is only a rough guide. The
+length row is the organizers' baseline judge. It scores each response by how long
+it is.
 
 \begin{table*}
-  \caption{Pilot results, read from TIRA on 2026-10-19. Each cell is the maximum
-  over the judge's measures of the correlation with one human truth measure. K is
-  Kendall's $\tau$. \org\ marks runs the organizers made from our code submissions,
-  \run{rank-dioptre} for \judge{NuggetRecall} and \run{lead-racer} for
-  \judge{Corroborate}. Bold marks our best per column. n/a means not run.}
+  \caption{Pilot results, read from TIRA on 2026-10-19. Each cell is the
+  correlation with one human truth measure, taking the maximum over the judge's
+  measures. K is Kendall's $\tau$. \org\ marks runs the organizers made from our
+  code submissions. These are \run{rank-dioptre} for \judge{NuggetRecall} and
+  \run{lead-racer} for \judge{Corroborate}. Bold marks our best in each column.
+  n/a means not run.}
   \label{tab:pilots}
   \small
   \begin{tabular}{@{}ll cc cc c cc cc@{}}
@@ -42,12 +44,13 @@ organizers' baseline judge, which scores each response by its length.
 \end{table*}
 
 \begin{table}
-  \caption{dragun-repgen. Maximum over all truth measures and all of the judge's
-  measures. Topics: \emph{rel.} is the topics file named in the local release,
-  \emph{head.} the article headline only, which is what TIRA gives the judge.
-  \org\ marks organizer runs of our code, \run{rank-dioptre} and
-  \run{lead-racer}. $^{*}$ marks the run made with our September code. Field rows
-  read on 2026-10-19, our later runs on 2026-10-21.}
+  \caption{Results on dragun-repgen. Each cell is the maximum over all truth
+  measures and all of the judge's measures. In the Topics column, \emph{rel.} is
+  the topics file named in the local release and \emph{head.} is the article
+  headline alone. The headline is all that TIRA gives the judge. \org\ marks the
+  organizers' runs of our code, \run{rank-dioptre} and \run{lead-racer}. $^{*}$
+  marks the run made with our September code. The field rows were read on
+  2026-10-19 and our later runs on 2026-10-21.}
   \label{tab:dragun}
   \small
   \setlength{\tabcolsep}{4pt}
@@ -75,22 +78,22 @@ organizers' baseline judge, which scores each response by its length.
   \end{tabular}
 \end{table}
 
-The row ``rank only'' re-aggregates the exact judgments of the Qwen3-30B row with
-\texttt{NR\_RANK} and nothing else. Our test-set system \run{nuggetrecall-rank}
-emits both from the same judgments, so on the pilots its equivalent is the better
-of the two rows in each column. The pilot entries on TIRA that carry the name
-\run{nuggetrecall-rank} are separate re-runs, which Section~\ref{sec:noise} uses to
-measure noise. The ensemble row emits a single fused measure
-(Section~\ref{sec:ensemble}). The two \judge{Corroborate} floors are discussed in
-Section~\ref{sec:floor}.
+The ``rank only'' row takes the exact judgments behind the Qwen3-30B row and
+aggregates them with \texttt{NR\_RANK} alone (Equation~\ref{eq:percentile}). Our test-set system
+\run{nuggetrecall-rank} emits the measures of both rows from the same judgments. On the pilots, its equivalent is
+therefore the better of the two rows in each column. The TIRA pilot entries named
+\run{nuggetrecall-rank} are separate re-runs. Section~\ref{sec:noise} uses them to
+measure noise. The ensemble row emits one fused measure
+(Section~\ref{sec:ensemble}). Section~\ref{sec:floor} discusses the two
+\judge{Corroborate} floors.
 
-On short answers \judge{NuggetRecall} sits near the field median. With gpt-oss-120b
-it reaches 0.839 Kendall and 0.710 \tauap\ on Strict Vital Score, 20th of 385
-entries on \tauap. \judge{Corroborate} stays between 0.26 and 0.32 there. On long
-reports the better of our two judges depends on the truth measure.
-\judge{NuggetRecall} is our best on Nugget Coverage and \judge{Corroborate} on F1,
-where its \tauap\ is 32nd of 206 entries (Section~\ref{sec:analysis}). On
-dragun-repgen, \judge{Corroborate} is 8th of 139 entries on Kendall. One run of
-\judge{NuggetRecall} with gpt-oss-120b is 4th, but Section~\ref{sec:dragun} shows
-that the scores of \judge{NuggetRecall} on this pilot swing too widely to rank
-models.
+On short answers, \judge{NuggetRecall} sits near the field median. With
+gpt-oss-120b it reaches 0.839 Kendall and 0.710 \tauap\ on Strict Vital Score.
+That \tauap\ ranks 20th of 385 entries. \judge{Corroborate} stays between 0.26 and
+0.32 there. On long reports, which of our two judges does better depends on the
+truth measure. \judge{NuggetRecall} is our best on Nugget Coverage.
+\judge{Corroborate} is our best on F1, where its \tauap\ ranks 32nd of 206 entries
+(Section~\ref{sec:analysis}). On dragun-repgen, \judge{Corroborate} is 8th of 139
+entries on Kendall. One \judge{NuggetRecall} run with gpt-oss-120b comes 4th. But
+Section~\ref{sec:dragun} shows that \judge{NuggetRecall} scores on this pilot swing
+too widely to rank models.

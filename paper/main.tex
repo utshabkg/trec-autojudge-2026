@@ -48,21 +48,23 @@
 
 \begin{abstract}
 TREC 2026 AutoJudge asks for automatic judges that rank the systems of a host
-track the way human assessors would. We submitted two judges that start from
-opposite assumptions. \judge{NuggetRecall} has an LLM write an answer key of 8 to
-20 facts from the request alone, before it sees any response, and then checks each
-response against the whole key in one call. \judge{Corroborate} uses no LLM. It
-pools the sentences of all responses to a topic and counts how many distinct teams
-state each claim. The scored team is left out of that count, so a team cannot vote
-for its own claims. On the pilots with human truth, the two judges do best on
-different measures. \judge{NuggetRecall} is our stronger judge on nugget coverage,
-and in the organizers' run of our code with gpt-oss-120b it reaches 0.839 Kendall's
-$\tau$ on short RAG answers. \judge{Corroborate} is our stronger judge on F1 for
-long reports and fails on short answers. The judge model mattered more than any
-other choice we measured. Ranking runs within each topic before averaging helped a
-little on short answers and hurt a little on long reports. We also describe six
-ways our judges failed, or would have failed, during development without raising
-an error, and the checks that caught them.
+track (another TREC track) the way human assessors would. We submitted two judges
+built on opposite assumptions. \judge{NuggetRecall} has an LLM write an answer key
+of 8 to 20 facts from the request alone, before it sees any response. It then
+checks each response against the whole key in one call. \judge{Corroborate}
+uses no LLM. It pools the sentences of all responses to a topic and counts how many
+distinct teams state each claim. The scored team is left out of that count, so no
+team can vote for its own claims. On the pilot datasets with human judgments, the two
+judges do best on different measures. \judge{NuggetRecall} is our stronger judge on
+nugget coverage, the share of a topic's key facts that a response covers. In the
+organizers' run of our code with gpt-oss-120b, it reaches 0.839 Kendall's $\tau$
+against the human system ranking on short RAG answers.
+\judge{Corroborate} is our stronger judge on F1 for long reports but fails on short
+answers. The judge model mattered more than any other choice we measured. Ranking
+runs within each topic before averaging helped a little on short answers and hurt a
+little on long reports. We also describe six ways our judges failed, or would have
+failed, during development without raising an error, along with the checks that
+caught them.
 \end{abstract}
 
 \keywords{automatic evaluation, LLM judges, nugget evaluation, pooling, RAG}

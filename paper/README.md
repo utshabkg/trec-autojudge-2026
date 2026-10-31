@@ -17,7 +17,7 @@ paper lives in `paper/`, so set `paper/main.tex` as the main document.
 Everything unfinished is printed in **red brackets**. In the source, search for
 `\pending`. At the time of writing:
 
-- author surname, advisor name and email, and the acknowledgments
+- the acknowledgments (funding, compute)
 - the test-set results table (Section 9.1), once the organizers publish scores
 - the public URL of the code (Section 11). The GitHub repository is private now
 - whether TIRA's test-set topics match the released files. The organizers'
