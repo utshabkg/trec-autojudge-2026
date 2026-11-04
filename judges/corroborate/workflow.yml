@@ -36,16 +36,16 @@ settings:
   min_sentence_words: 5
   # tau=0.80 rather than a higher value: on kiddie the count of clusters
   # corroborated by two or more teams peaks near 0.78 and collapses above 0.85,
-  # because BGE similarity for genuine paraphrases sits around 0.83. Calibrated
-  # properly on the pilot datasets via the tau-sweep below.
+  # because BGE similarity for genuine paraphrases sits around 0.83. The tau-sweep
+  # below can test other values. We did not run it on the pilots.
   tau: 0.80
   # Measured against the shipped encoder, not guessed. cos(sentence, topic) under
   # BAAI/bge-base-en-v1.5 runs 0.587-0.753 for specific facts, 0.361-0.472 for
   # boilerplate hedges and 0.266-0.319 for literal gibberish. The old 0.15, and
   # every value in the old sweep, sat below all of that, so the gate kept 100% of
   # clusters on every dataset and the sweep could not tell: all four values gave
-  # identical banks. 0.50 is the gap between hedges and facts. Re-fit on the pilots
-  # with gate-sweep below, which now spans the live range.
+  # identical banks. 0.50 is the gap between hedges and facts. The gate-sweep below
+  # spans the live range. We did not run it on the pilots.
   specificity_floor: 0.50
   min_teams: 2              # >= 2 guarantees no bank cluster is one team's private
                             # invention, so a LOTO weight can never reach zero
@@ -72,7 +72,7 @@ judge_settings:
   # 1, not 2: "corroborated by at least one other team" matches min_teams=2 for
   # the bank. Requiring two other teams needs 3+ teams per cluster, which on a
   # small pool zeroes NPREC for every run and silently takes NF1 and NF1_RANK
-  # down with it. Swept over {1,2,3} on the pilots.
+  # down with it.
   min_other_teams: 1
   attribution_mode: "auto"  # auto | inline | pool
   doc_chunk_chars: 1200
@@ -115,7 +115,7 @@ variants:
       multilingual_cross_encoder: "BAAI/bge-reranker-v2-m3"
       cross_batch_size: 32
 
-  # Bounded-runtime configuration for a CPU-only worker.
+  # Faster configuration for a CPU-only worker. Not validated against truth.
   fast:
     settings:
       max_clusters: 25

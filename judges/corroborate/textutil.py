@@ -33,7 +33,7 @@ def normalize(text: str) -> str:
     """NFKC-fold, collapse whitespace, strip.
 
     NFKC matters for ragtime26, whose length limit is counted in NFKC
-    characters and whose documents are not all Latin script.
+    characters.
     """
     if not text:
         return ""

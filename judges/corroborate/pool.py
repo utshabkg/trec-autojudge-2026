@@ -11,11 +11,11 @@ about three runs per team, and teams submit close variants of one pipeline.
 Counting runs would measure herd size and let one team vote several times for
 its own phrasing.
 
-Leave-one-team-out removes bank capture. A report's own sentences are in the
-bank it is scored against, so without a correction every report automatically
-covers whatever only it said. Cluster weights are recomputed per scored team as
-|teams(c) - {t}|, which is the leave-one-group-out pool-bias correction from
-retrieval evaluation.
+No team votes for its own claims. A report's own sentences are in the pool its
+bank is built from, so two rules apply. A cluster needs at least two teams to
+enter the bank, which keeps out a claim only one team makes. Cluster weights are
+then recomputed per scored team as |teams(c) - {t}|, a team-level version of the
+leave-one-run-out test of pool bias from retrieval evaluation.
 """
 
 from __future__ import annotations

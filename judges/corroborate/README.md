@@ -1,32 +1,34 @@
 # judges/corroborate
 
-Pooled corroboration with leave-one-team-out weighting. The repository README
-describes the method. This file covers the code layout and how to run it.
+Corroborate clusters the sentences of all responses to a topic and treats each
+cluster as a claim. A claim needs at least two teams to enter the topic's reference
+bank, which keeps out a solo claim. Its leave-one-team-out (LOTO) weight counts the
+teams behind it, minus the team being scored. The repository README describes the
+method. This file covers the code and how to run it.
 
 ## Modules
 
 | File | Responsibility |
 |---|---|
-| `textutil.py` | NFKC normalisation, the boilerplate and length gates, stable cache keys. No dependencies beyond the standard library, so normalisation cannot drift between machines. |
-| `encoders.py` | Model loading, device selection, and the on-disk score cache. |
-| `pool.py` | Per-topic clustering, team votes, the LOTO weight, export to `NuggetBank`. |
-| `scoring.py` | `NCOV`, `NPREC`, the harmonic mean, and within-topic percentile rank. |
-| `attribution.py` | Citation support: inline entailment, or pooled citation agreement. |
-| `measures.py` | The `LeaderboardSpec`. One place, with the reasoning for each measure. |
-| `judge.py` | The protocol implementation. Both phases, one class. |
+| `textutil.py` | NFKC normalization (Unicode cleanup), boilerplate and length filters and stable cache keys, using only the standard library so normalization cannot drift between machines. |
+| `encoders.py` | Model loading, device selection and the on-disk score cache. |
+| `pool.py` | Per-topic clustering, team votes and the LOTO weight. |
+| `scoring.py` | `NCOV` (bank coverage), `NPREC` (share of sentences another team backs), their harmonic mean `NF1` and its within-topic percentile rank `NF1_RANK`. |
+| `attribution.py` | Citation support, from entailment (the cited text backs the sentence) or citation agreement among teams. |
+| `measures.py` | The `LeaderboardSpec`, with the reasoning for each measure. |
+| `judge.py` | The `auto-judge` runner's interface for the nugget and judge phases, plus export to `NuggetBank`. |
 
-Three decisions in the code that look arbitrary and are not:
+Three code decisions look arbitrary but are not.
 
-- **`pick_device` proves CUDA with a real matmul.** On this driver and wheel
-  combination `torch.cuda.is_available()` returns True even when CUDA
-  initialisation has failed, so only an actual operation settles it.
-- **The cross-encoder runs through plain `transformers`, not
-  `sentence_transformers.CrossEncoder`.** We need P(entailment) specifically, and
-  which activation `CrossEncoder.predict` applies by default has changed between
-  versions. Computing it from the logits is version-proof.
+- **`pick_device` proves CUDA with a real matrix multiplication.** On our driver and
+  PyTorch build, `torch.cuda.is_available()` returns True even when CUDA
+  initialization has failed.
+- **The cross-encoder, a model that scores two texts read together, runs through
+  plain `transformers`.** The default output function of
+  `sentence_transformers.CrossEncoder.predict` has changed between versions, so we
+  compute the entailment probability from the raw outputs.
 - **One class serves both phases.** The runner caches instances by class path, so
-  declaring only `judge_class` gives the nugget phase and the judge phase the
-  same object, and the pooled clustering is computed once.
+  declaring only `judge_class` means the pooled clustering runs once.
 
 ## Running it
 
@@ -39,36 +41,41 @@ auto-judge run \
     --out-dir       ./results/output/rag26/
 ```
 
-`CACHE_DIR` is worth setting even though the judge makes no LLM calls. It is
-where the embedding and cross-encoder scores are cached, which is what makes an
-interrupted run cheap to resume and the ablation variants nearly free.
+Set `CACHE_DIR` even though the judge makes no LLM calls. It keeps the embedding and
+cross-encoder scores, so an interrupted run is cheap to resume.
 
-`ragtime26` needs no special variant. RAGTIME draws on NeuCLIR, so we expected
-non-English documents, where an English-only NLI model would return noise rather
-than an error. Both 2026 releases turned out to be English, so `best` is right for
-both test sets.
+`ragtime26` needs no special variant. We feared non-English documents would give noise
+from an English-only entailment model, but both 2026 releases are English. So `best`
+fits both test sets.
 
 ## Variants
 
-`best` is the submitted configuration. `no-loto`, `run-votes`, `coverage-only`
-and `no-cross-encoder` are the ablations that answer whether each component
-earns its place. `fast` turns off cross-encoder adjudication in coverage scoring,
-caps the bank at 25 clusters and reads at most 2 chunks per cited document, which
-makes it faster on a CPU-only worker. It is not bounded, though: citation
-attribution calls the cross-encoder unconditionally, and `fast` has not been
-validated against truth. `multilingual` swaps in `bge-reranker-v2-m3`, which the image does not
-bake in, so it runs only locally or with the model mounted.
+`best` is the submitted configuration, behind `corroborate-best` (data submission) and
+`lead-racer` (code submission, a container run by TIRA, the evaluation platform). One
+NuggetRecall code submission, `grave-node`, doubles its LLM reply budget (token limit)
+on each retry, which does not apply here.
+
+`no-loto`, `run-votes`, `coverage-only` and `no-cross-encoder` are ablations, copies
+of the judge with one part changed. We ran no ablation of the LOTO weight or of
+per-team voting, so their effect is unknown. `no-loto` only stops `NPREC` requiring
+another team's agreement. The `NCOV` weight stays.
+
+`fast` turns off the cross-encoder in coverage scoring, caps the bank at 25 clusters
+and reads at most 2 chunks per cited document. It is faster on a CPU-only worker but
+not time-bounded, because citation entailment still calls the cross-encoder. It is not
+validated against truth. `multilingual` swaps in `bge-reranker-v2-m3`, which the
+container lacks, so it runs only locally or with the model mounted.
 
 ## Two things that will bite you
 
-**Never set `create_qrels: true`.** The TIRA evaluator finds your leaderboard by
-scanning the output directory for files whose lines split into four
-whitespace-separated tokens. A TREC qrels file matches that shape, so the
-evaluator can no longer tell which file is the leaderboard and the upload fails
-with "No unique file in trec-eval -q format was found". Verified locally. Run
-`scripts/check_upload_dir.py` before every upload.
+**Never set `create_qrels: true`.** TIRA finds your leaderboard by looking for files
+whose lines split into four whitespace-separated tokens. A TREC qrels file (relevance
+labels) has that shape too, so the upload fails with "No unique file in trec-eval -q
+format was found". Verified locally. Run `scripts/check_upload_dir.py` before every
+upload.
 
-**Watch the degeneracy warnings.** If `min_other_teams` is too high for the pool,
-`NPREC` goes to zero for every run and takes `NF1` and `NF1_RANK` down with it,
-silently. `judge()` warns when a measure is constant or low-cardinality. Treat
-either warning on real data as a reason not to submit that run.
+**Watch for measures that stop varying.** `min_other_teams` sets how many other teams
+must share a claim before `NPREC` counts it. Set it too high for the pool and `NPREC`
+falls to zero for every run. `NF1` falls with it and every run ties on `NF1_RANK`,
+silently. `judge()` warns when a measure is constant or takes few distinct values.
+Treat either warning on real data as a reason not to submit.
