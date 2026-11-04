@@ -1,6 +1,6 @@
 # Two AutoJudges from team `iris-mst`
 
-TREC 2026 AutoJudge. We submit two judges that work from different assumptions,
+[TREC](https://trec.nist.gov) 2026 AutoJudge. We submit two judges that work from different assumptions,
 because on the pilot datasets each one fails where its assumption breaks.
 
 **NuggetRecall is the primary submission.** It builds an answer key of facts from
@@ -20,13 +20,9 @@ correlation against the held-out human assessments. Nothing here is estimated.
 | Path | What it holds |
 |---|---|
 | `judges/nuggetrecall/`, `judges/corroborate/` | the two judges |
-| `scripts/` | running jobs on the compute node, syncing, upload checks, fusion |
+| `scripts/` | serving the LLM, upload checks, rank aggregation and fusion |
 | `tests/` | the test suite, which CI and tira-cli run before every code submission |
 | `data/kiddie/` | the small synthetic dataset used for smoke tests |
-| `paper/` | the notebook paper in LaTeX, ready for Overleaf |
-| `docs/NOTEBOOK_PAPER.md` | the same paper in plain language, for the professor |
-| `docs/WORK_LOG.md` | the full engineering record: every decision and measurement |
-| `docs/updates/` | progress updates |
 | `run_all_datasets.py`, `run_kiddie.sh`, `datasets.yml`, `fetch_datasets.py`, `Dockerfile` | from the starter kit, to run judges and build the image |
 | `results/` | everything the judges produce: outputs, logs, caches. Not in git |
 | `local-data/` | a link to the TREC data. Not in git |
@@ -173,7 +169,8 @@ variants quantify what is left.
 Kendall against held-out human assessments, from TIRA, read 2026-10-19 after the
 organizers re-scored the pilots. Field figures are over every entry on that pilot's
 leaderboard (385, 206 and 139 entries, many of them variants from one team). The
-full tables are in `paper/` and `docs/NOTEBOOK_PAPER.md`.
+full tables will be in our TREC notebook paper. These comparisons with the field are
+informal.
 
 | Pilot, truth measure | Corroborate | NuggetRecall (Qwen3-30B) | best NuggetRecall | field median | field best |
 |---|---|---|---|---|---|

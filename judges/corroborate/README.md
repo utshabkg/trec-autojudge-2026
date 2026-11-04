@@ -1,8 +1,7 @@
 # judges/corroborate
 
-Pooled corroboration with leave-one-team-out weighting. The method is described
-in the repository README, and the full reasoning, measurements and decision log
-are in `docs/WORK_LOG.md`. This file covers the code layout and how to run it.
+Pooled corroboration with leave-one-team-out weighting. The repository README
+describes the method. This file covers the code layout and how to run it.
 
 ## Modules
 

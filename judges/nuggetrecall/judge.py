@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """NuggetRecall: query-derived nugget recall, judged by an LLM.
 
-The complement to Corroborate. On the pilots Corroborate is competitive on
-long-form report generation (dragun-repgen rank 7 of 60) but near the bottom on
-short RAG answers (rag25-gen rank 86 of 91), where the strongest public judges
-build their nuggets from the question rather than from the pool of answers. This
-judge does that.
+The complement to Corroborate, which does well on long reports and poorly on short
+RAG answers. This judge builds its nuggets from the question rather than from the
+pool of answers.
 
 One class serves both phases, as in Corroborate, so the runner reuses a single
 instance. The nugget bank is written by the framework to <filebase>.nuggets.jsonl

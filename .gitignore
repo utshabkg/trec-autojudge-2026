@@ -120,33 +120,19 @@ marimo/_lsp/
 __marimo__/
 .streamlit/secrets.toml
 
-# Local Claude Code permission rules, machine-specific and not shared
-.claude/settings.local.json
-.claude/settings.json
-
-# CI scratch space, kept out of the checkout on purpose (tira refuses a dirty tree)
+# CI scratch space, kept out of the checkout because tira refuses a dirty tree
 /.hf/
 /ci-warm/
 
-# Result folders the compute node writes and sync_remote.sh pulls back. They hold
-# test-set leaderboards and answer keys, so they must never be committed. output*/
-# and *cache/ were covered above, these were not, until a pull brought them here.
-/ensemble/
-/fusion/
-/upload-rank/
-/attic/
-
-# Everything the judges produce: outputs, logs, caches, submission files.
+# Everything the judges produce
 /results/
 
-# LaTeX build output for the notebook paper. Overleaf builds it, nothing to commit.
-/paper/*.pdf
-/paper/*.aux
-/paper/*.bbl
-/paper/*.blg
-/paper/*.log
-/paper/*.out
-/paper/*.fls
-/paper/*.fdb_latexmk
-/paper/*.synctex.gz
-/paper/*.zip
+# Local working files, not part of the published code
+/CLAUDE.md
+/.claude/
+/docs/
+/paper/
+/scripts/oneoff/
+/scripts/run_on_node.sh
+/scripts/sync_remote.sh
+/scripts/fetch_data.sh

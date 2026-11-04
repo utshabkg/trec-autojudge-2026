@@ -3,8 +3,7 @@
 Two LLM steps, both batched:
 
 1. Per topic, generate an answer key of atomic facts from the request alone. This
-   is "query-only" nugget generation, the approach behind the strongest public
-   judge on the rag25-gen pilot. A bank built from the request is also readable
+   is "query-only" nugget generation. A bank built from the request is also readable
    under the data policy for every topic, unlike one mined from responses.
 2. Per report, label every fact in the key as support, partial or no, in a single
    call. One call per report rather than per (report, fact) pair keeps this at
