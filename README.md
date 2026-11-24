@@ -14,8 +14,9 @@ own vote never counts toward the claims it is scored on.
 
 The three pilot datasets (rag25-gen, ragtime25 and dragun-repgen) come from TREC 2025. Their
 human assessments stay on TIRA, the task's evaluation platform, so we upload a leaderboard
-of scores and read back the correlation. Scores on the test sets (rag26 and ragtime26) are
-not out yet. The rag sets hold short answers and the ragtime sets hold long reports.
+of scores and read back the correlation. The official test-set scores (rag26 and ragtime26)
+came out on 2026-11-15 and are below. The rag sets hold short answers and the ragtime sets
+hold long reports.
 
 ## Where things are
 
@@ -159,7 +160,29 @@ the top of the leaderboard, where `tauap_b` is most sensitive. We have not teste
 directly. We also ran no ablation (switching one part off to see what it adds) of the
 leave-one-team-out weight or of per-team voting. Their effect on the ranking is unknown.
 
-## Results
+## Official test-set results
+
+The organizers scored each judge against the official truth of its host track. On rag26
+that truth is a rating fitted from human preferences between pairs of responses (41
+systems). On ragtime26 it is an F1 score from a mostly human assessment (27 systems).
+Each value is `tauap_b`, with each run at its best measure and model. The number in
+brackets is the informal rank among all run tags, 90 on rag26 and 88 on ragtime26.
+
+| Run | rag26 | ragtime26 |
+|---|---|---|
+| `grave-node`, NuggetRecall code run by the organizers | 0.574 (13) | -0.095 (66) |
+| `rank-dioptre`, NuggetRecall code run by the organizers | 0.541 (27) | -0.125 (71) |
+| `nuggetrecall-best`, NuggetRecall with Qwen3-30B | 0.509 (38) | -0.248 (82) |
+| `corroborate-best` and `lead-racer`, Corroborate | 0.171 (77) | 0.330 (24) |
+| Field median | 0.49 | 0.12 |
+
+NuggetRecall did well on the short answers of rag26 and turned negative on the long reports
+of ragtime26. Corroborate did the opposite. Our pilots had predicted this split in direction.
+The best `grave-node` score on rag26 used Qwen3.8-27B. Our TREC notebook paper gives the full
+tables, including the other truths the organizers report. These comparisons with the field
+are informal.
+
+## Pilot results
 
 Kendall against held-out human assessments, from TIRA, read 2026-10-19 after the organizers
 re-scored the pilots. Field figures cover every entry on that pilot's leaderboard (385, 206
